@@ -3,13 +3,24 @@ import type { Metadata } from "next";
 import { getEvent } from "@/lib/ftc/queries";
 import { seasonFull } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
-import { getRankingMap } from "@/lib/rankings";
+import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
+import { getEventStats } from "@/lib/eventStats";
 import { formatDate, locationStr } from "@/lib/format";
 import EventRankings from "@/components/EventRankings";
-import MatchList from "@/components/MatchList";
+import MatchList, { matchKey } from "@/components/MatchList";
+import LiveRefresh from "@/components/LiveRefresh";
+import EventPredictions from "@/components/EventPredictions";
+import PredictScheduleToggle from "@/components/PredictScheduleToggle";
+import EventSos from "@/components/EventSos";
+import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
+import { simulateEvent, type SimTeam } from "@/lib/predict/simulate";
+import { computeSos } from "@/lib/predict/sos";
+import { winProb } from "@/lib/predict/model";
+import type { SchedMatchIdx } from "@/lib/predict/schedule";
 
 interface Props {
   params: Promise<{ season: string; code: string }>;
+  searchParams: Promise<{ sched?: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -42,7 +53,7 @@ function StatusBadge({ ongoing, finished }: { ongoing: boolean; finished: boolea
   );
 }
 
-export default async function EventPage({ params }: Props) {
+export default async function EventPage({ params, searchParams }: Props) {
   const { season: seasonStr, code } = await params;
   const season = Number(seasonStr);
   if (!Number.isInteger(season)) notFound();
@@ -51,6 +62,103 @@ export default async function EventPage({ params }: Props) {
   if (!ev) notFound();
 
   const epaMap = getRankingMap(season, ev.teams.map((t) => t.teamNumber));
+  // Time-aware ratings for THIS event: pre-event EPA (seeds the simulation,
+  // no lookahead) and post-event EPA/OPR (shown in the rankings table).
+  const evStats = getEventStats(season, code);
+
+  // --- Event prediction (Monte-Carlo) ---
+  const model = getSimModel(season);
+  const teamNums = ev.teams.map((t) => t.teamNumber);
+  const idxOf = new Map(teamNums.map((n, i) => [n, i]));
+  // Pre-event EPA going into this event; fall back to season EPA for teams or
+  // events missing from the precomputed snapshot (e.g. a live/unfinished event).
+  const preEpaOf = (n: number): number =>
+    evStats.get(n)?.preEpa ?? epaMap.get(n)?.epa ?? 0;
+  // Post-event EPA (rating leaving the event) for the realized-difficulty SoS.
+  const postEpaOf = (n: number): number =>
+    evStats.get(n)?.epa ?? epaMap.get(n)?.epa ?? 0;
+  const simTeams: SimTeam[] = teamNums.map((n) => ({
+    number: n,
+    epa: preEpaOf(n),
+  }));
+
+  const realSchedule: SchedMatchIdx[] = [];
+  for (const m of ev.matches) {
+    if (m.tournamentLevel !== "Quals") continue;
+    const red = m.teams.filter((t) => t.alliance === "Red").map((t) => idxOf.get(t.teamNumber));
+    const blue = m.teams.filter((t) => t.alliance === "Blue").map((t) => idxOf.get(t.teamNumber));
+    if (red.length === 2 && blue.length === 2 && [...red, ...blue].every((x) => x != null)) {
+      realSchedule.push([red[0]!, red[1]!, blue[0]!, blue[1]!]);
+    }
+  }
+  const realAvailable = realSchedule.length > 0;
+  const matchesPerTeam = realAvailable
+    ? Math.max(1, Math.round((realSchedule.length * 4) / Math.max(1, teamNums.length)))
+    : 5;
+
+  const po = ev.matches.filter((m) => m.tournamentLevel !== "Quals");
+  const captains = new Set(
+    po.flatMap((m) => m.teams).filter((t) => t.allianceRole === "Captain").map((t) => t.teamNumber),
+  );
+  const allianceCount = captains.size || undefined;
+  const allianceSize = po.some((m) => m.teams.some((t) => t.allianceRole === "SecondPick"))
+    ? 3
+    : allianceCount
+      ? 2
+      : undefined;
+
+  const schedParam = (await searchParams).sched;
+  const mode: "real" | "sim" =
+    schedParam === "sim" ? "sim" : schedParam === "real" ? "real" : realAvailable ? "real" : "sim";
+  const canPredict = simTeams.length >= 6 && simTeams.some((t) => t.epa > 0);
+  const simResult = canPredict
+    ? simulateEvent({
+        teams: simTeams,
+        model,
+        matchesPerTeam,
+        realSchedule: mode === "real" && realAvailable ? realSchedule : undefined,
+        allianceCount,
+        allianceSize,
+        iters: teamNums.length > 80 ? 1200 : 3000,
+        seed: 0x51ed51ed,
+      })
+    : null;
+
+  // Per-match win probabilities for unplayed matches.
+  const winProbs = new Map<string, number>();
+  for (const m of ev.matches) {
+    if (m.hasBeenPlayed) continue;
+    const red = m.teams.filter((t) => t.alliance === "Red");
+    const blue = m.teams.filter((t) => t.alliance === "Blue");
+    if (!red.length || !blue.length) continue;
+    const rE = red.reduce((s, t) => s + preEpaOf(t.teamNumber), 0);
+    const bE = blue.reduce((s, t) => s + preEpaOf(t.teamNumber), 0);
+    if (rE === 0 && bE === 0) continue;
+    winProbs.set(matchKey(m), winProb(rE, bE, model.marginSd));
+  }
+
+  // --- Strength of schedule (Statbotics-style; needs a released real schedule) ---
+  const canSos = realAvailable && teamNums.length >= 6;
+  const sosPre = canSos
+    ? computeSos({ teams: teamNums, epaOf: (i) => preEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
+    : null;
+  const sosPost = canSos
+    ? computeSos({ teams: teamNums, epaOf: (i) => postEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
+    : null;
+
+  // Predicted start times for unplayed qualification matches (TBA-style).
+  const qualSched: SchedMatch[] = ev.matches
+    .filter((m) => m.tournamentLevel === "Quals")
+    .map((m) => ({
+      key: matchKey(m),
+      scheduled: m.scheduledStartTime ? Date.parse(m.scheduledStartTime) : null,
+      actual: m.actualStartTime ? Date.parse(m.actualStartTime) : null,
+      played: m.hasBeenPlayed,
+    }));
+  const { predicted } = predictMatchTimes(qualSched, {
+    ...FTC_DEFAULTS,
+    seasonPriorSec: getSeasonCyclePrior(season, ev.type),
+  });
 
   const dateRange =
     ev.start === ev.end
@@ -59,6 +167,7 @@ export default async function EventPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-[1240px] space-y-7 px-5 pb-6 pt-10 sm:px-8">
+      <LiveRefresh enabled={ev.ongoing} />
       {/* Header card */}
       <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
         <div className="flex flex-wrap items-start justify-between gap-[18px]">
@@ -111,11 +220,40 @@ export default async function EventPage({ params }: Props) {
         </div>
       </div>
 
+      {simResult && (
+        <section>
+          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2.5">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+                Predictions
+              </h2>
+              <span className="text-[11px] text-[#6b6f78]">
+                win odds, seeds &amp; playoffs
+              </span>
+            </div>
+            <PredictScheduleToggle value={mode} realAvailable={realAvailable} />
+          </div>
+          <EventPredictions result={simResult} season={season} />
+        </section>
+      )}
+
+      {sosPre && sosPost && sosPre.teams.length > 0 && (
+        <section>
+          <div className="mb-3.5 flex items-baseline gap-2.5">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+              Strength of Schedule
+            </h2>
+            <span className="text-[11px] text-[#6b6f78]">how lucky was the draw</span>
+          </div>
+          <EventSos pre={sosPre} post={sosPost} season={season} />
+        </section>
+      )}
+
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <section>
           <h2 className={HEADING}>Rankings</h2>
           {ev.teams.length > 0 ? (
-            <EventRankings teams={ev.teams} season={season} epa={epaMap} />
+            <EventRankings teams={ev.teams} season={season} stats={evStats} epa={epaMap} />
           ) : (
             <div className="card p-6 text-center text-sm text-muted">
               No team list available.
@@ -125,7 +263,13 @@ export default async function EventPage({ params }: Props) {
 
         <section>
           <h2 className={HEADING}>Matches</h2>
-          <MatchList matches={ev.matches} season={season} />
+          <MatchList
+            matches={ev.matches}
+            season={season}
+            predictions={predicted}
+            winProbs={winProbs}
+            timezone={ev.timezone}
+          />
         </section>
       </div>
     </div>

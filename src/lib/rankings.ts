@@ -1,4 +1,5 @@
-import data from "@/data/rankings-2025.json";
+import { type SimModel, DEFAULT_SIM_MODEL } from "@/lib/predict/model";
+import { getRankingsData } from "@/lib/data/store";
 
 export interface TeamRanking {
   number: number;
@@ -21,21 +22,41 @@ export interface TeamRanking {
 
 type Row = Omit<TeamRanking, "number">;
 
+interface CyclePriors {
+  overallSec: number;
+  byTypeSec: Record<string, number>;
+  sampleCount: number;
+}
+
 interface FileShape {
   season: number;
   computedAt: string;
   matchCount: number;
   teamCount: number;
   regions: string[];
+  cyclePriors?: CyclePriors;
+  simModel?: SimModel;
   teams: Record<string, Row>;
 }
 
-const REGISTRY: Record<number, FileShape> = {
-  2025: data as unknown as FileShape,
-};
-
+// Read from the in-process store (refreshable at runtime) rather than a static
+// import, so a refresh is reflected without a server restart.
 function file(season: number): FileShape | null {
-  return REGISTRY[season] ?? null;
+  return getRankingsData(season) as unknown as FileShape | null;
+}
+
+/** Dynamic season baseline cycle (seconds) for match-time prediction: the
+ *  per-event-type value when available, else the overall season value. */
+export function getSeasonCyclePrior(season: number, eventType?: string): number {
+  const cp = file(season)?.cyclePriors;
+  if (!cp) return 330; // hard fallback if not yet precomputed
+  if (eventType && cp.byTypeSec[eventType] != null) return cp.byTypeSec[eventType];
+  return cp.overallSec;
+}
+
+/** Season win/score/RP model for the event simulator. */
+export function getSimModel(season: number): SimModel {
+  return file(season)?.simModel ?? DEFAULT_SIM_MODEL;
 }
 
 export const SORT_KEYS = [

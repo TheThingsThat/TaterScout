@@ -1,11 +1,16 @@
 import Link from "next/link";
 import type { Match, MatchTeam } from "@/lib/ftc/types";
 import { tournamentLevelLabel } from "@/lib/ftc/labels";
+import { formatClock } from "@/lib/format";
 
 function matchCode(m: Match): string {
   if (m.tournamentLevel === "Quals") return `Q${m.matchNum}`;
   if (m.series > 0) return `M${m.series}-${m.matchNum}`;
   return `${m.matchNum}`;
+}
+
+export function matchKey(m: Match): string {
+  return `${m.tournamentLevel}-${m.series}-${m.matchNum}`;
 }
 
 function AllianceCell({
@@ -41,7 +46,17 @@ function AllianceCell({
   );
 }
 
-function MatchRow({ m }: { m: Match }) {
+function MatchRow({
+  m,
+  predicted,
+  timezone,
+  winProb,
+}: {
+  m: Match;
+  predicted?: number;
+  timezone?: string;
+  winProb?: number; // red win probability 0..1 (unplayed matches)
+}) {
   const red = m.teams
     .filter((t) => t.alliance === "Red")
     .sort((a, b) => a.station.localeCompare(b.station));
@@ -60,21 +75,37 @@ function MatchRow({ m }: { m: Match }) {
       <span className="font-mono text-[12px] text-[#6b6f78]">{matchCode(m)}</span>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <AllianceCell teams={red} side="Red" won={redWon} align="right" />
-        <div className="flex items-center gap-1.5 font-mono text-[14px] tabular-nums">
-          {played ? (
-            <>
-              <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
-                {redScore}
+        {played ? (
+          <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
+            <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
+              {redScore}
+            </span>
+            <span className="text-[#3a3f48]">–</span>
+            <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
+              {blueScore}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-0.5">
+            {winProb != null ? (
+              <div
+                className="flex items-center gap-1 font-mono text-[12px] tabular-nums"
+                title="Predicted win probability"
+              >
+                <span style={{ color: "#ff5d6c" }}>{Math.round(winProb * 100)}%</span>
+                <span className="text-[#3a3f48]">–</span>
+                <span style={{ color: "#4d8dff" }}>{Math.round((1 - winProb) * 100)}%</span>
+              </div>
+            ) : null}
+            {predicted != null ? (
+              <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]" title="Predicted start time">
+                ~{formatClock(predicted, timezone)}
               </span>
-              <span className="text-[#3a3f48]">–</span>
-              <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
-                {blueScore}
-              </span>
-            </>
-          ) : (
-            <span className="text-[12px] text-[#6b6f78]">vs</span>
-          )}
-        </div>
+            ) : winProb == null ? (
+              <span className="text-[12px] text-[#6b6f78]">vs</span>
+            ) : null}
+          </div>
+        )}
         <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" />
       </div>
     </div>
@@ -83,9 +114,15 @@ function MatchRow({ m }: { m: Match }) {
 
 export default function MatchList({
   matches,
+  predictions,
+  winProbs,
+  timezone,
 }: {
   matches: Match[];
   season: number;
+  predictions?: Map<string, number>;
+  winProbs?: Map<string, number>;
+  timezone?: string;
 }) {
   const withTeams = matches.filter((m) => m.teams.length > 0);
 
@@ -121,7 +158,13 @@ export default function MatchList({
             </h3>
             <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
               {ms.map((m) => (
-                <MatchRow key={`${m.tournamentLevel}-${m.series}-${m.matchNum}`} m={m} />
+                <MatchRow
+                  key={matchKey(m)}
+                  m={m}
+                  predicted={predictions?.get(matchKey(m))}
+                  winProb={winProbs?.get(matchKey(m))}
+                  timezone={timezone}
+                />
               ))}
             </div>
           </div>

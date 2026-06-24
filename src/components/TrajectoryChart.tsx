@@ -37,6 +37,15 @@ function fmtDate(ms: number): string {
   });
 }
 
+/** Real competition match label (e.g. "Qual 15", "Match 1-2"). Falls back to
+ *  the season sequence index for points without match metadata. */
+function matchLabel(p: TrajPoint): string {
+  if (!p.matchNum) return `Match ${p.i + 1}`;
+  if (!p.playoff) return `Qual ${p.matchNum}`;
+  if (p.series > 0) return `Match ${p.series}-${p.matchNum}`;
+  return `Match ${p.matchNum}`;
+}
+
 export default function TrajectoryChart({
   points,
   segments,
@@ -235,10 +244,15 @@ export default function TrajectoryChart({
       <div className="mt-2 min-h-[22px] text-[12px]">
         {hp ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="font-semibold">
-              Match {hp.i + 1}
-              {hp.playoff && (
-                <span className="ml-1 rounded bg-gold/15 px-1 text-gold">playoff</span>
+            <span className="flex flex-col leading-tight">
+              <span className="font-semibold">
+                {matchLabel(hp)}
+                {hp.playoff && (
+                  <span className="ml-1 rounded bg-gold/15 px-1 text-gold">playoff</span>
+                )}
+              </span>
+              {hp.noShow && (
+                <span className="text-[10px] font-normal text-[#6b6f78]">no show</span>
               )}
             </span>
             <span className="text-[#6b6f78]">

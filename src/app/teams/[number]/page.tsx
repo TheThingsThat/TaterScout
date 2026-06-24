@@ -1,15 +1,75 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getTeam } from "@/lib/ftc/queries";
+import { getTeam, getEventMatches } from "@/lib/ftc/queries";
 import { CURRENT_SEASON, seasonFull, seasonLabel } from "@/lib/season";
 import { eventTypeLabel, eventTypeWeight, awardLabel } from "@/lib/ftc/labels";
-import { formatDate, locationStr } from "@/lib/format";
-import { getTeamRanking, getTeamCount } from "@/lib/rankings";
+import { formatDate, formatClock, locationStr } from "@/lib/format";
+import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getTrajectory } from "@/lib/trajectory";
+import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
 import EpaTiles from "@/components/EpaTiles";
 import TrajectoryChart from "@/components/TrajectoryChart";
+import LiveRefresh from "@/components/LiveRefresh";
+
+interface NextMatch {
+  label: string;
+  time: number | null;
+  timezone: string;
+  eventName: string;
+  eventCode: string;
+}
+
+async function findNextMatch(
+  season: number,
+  num: number,
+  ongoingEventCodes: { code: string; name: string; type: string }[],
+): Promise<NextMatch | null> {
+  const results = await Promise.all(
+    ongoingEventCodes.map((e) =>
+      getEventMatches(season, e.code).catch(() => null),
+    ),
+  );
+  let best: NextMatch | null = null;
+  results.forEach((res, i) => {
+    if (!res) return;
+    const ev = ongoingEventCodes[i];
+    const quals = res.matches.filter((m) => m.tournamentLevel === "Quals");
+    const sched: SchedMatch[] = quals.map((m) => ({
+      key: `${m.tournamentLevel}-${m.series}-${m.matchNum}`,
+      scheduled: m.scheduledStartTime ? Date.parse(m.scheduledStartTime) : null,
+      actual: m.actualStartTime ? Date.parse(m.actualStartTime) : null,
+      played: m.hasBeenPlayed,
+    }));
+    const { predicted } = predictMatchTimes(sched, {
+      ...FTC_DEFAULTS,
+      seasonPriorSec: getSeasonCyclePrior(season, ev.type),
+    });
+    const mine = quals
+      .filter(
+        (m) => !m.hasBeenPlayed && m.teams.some((t) => t.teamNumber === num),
+      )
+      .map((m) => ({
+        m,
+        t: predicted.get(`${m.tournamentLevel}-${m.series}-${m.matchNum}`) ?? null,
+      }))
+      .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
+    if (mine.length) {
+      const top = mine[0];
+      if (best === null || (top.t ?? Infinity) < (best.time ?? Infinity)) {
+        best = {
+          label: `Q${top.m.matchNum}`,
+          time: top.t,
+          timezone: res.timezone,
+          eventName: ev.name,
+          eventCode: ev.code,
+        };
+      }
+    }
+  });
+  return best;
+}
 
 interface Props {
   params: Promise<{ number: string }>;
@@ -54,6 +114,14 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const epaTeamCount = getTeamCount(season);
   const traj = getTrajectory(season, num);
 
+  // Live: predicted next match at any ongoing event this team is registered for.
+  const ongoing = team.events
+    .filter((e) => e.event.ongoing)
+    .map((e) => ({ code: e.eventCode, name: e.event.name, type: e.event.type }));
+  const nextMatch = ongoing.length
+    ? await findNextMatch(season, num, ongoing)
+    : null;
+
   const events = [...team.events].sort(
     (a, b) =>
       eventTypeWeight(a.event.type) - eventTypeWeight(b.event.type) ||
@@ -62,6 +130,30 @@ export default async function TeamPage({ params, searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
+      <LiveRefresh enabled={ongoing.length > 0} />
+
+      {/* Up next (live) */}
+      {nextMatch && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-accent/40 bg-accent/[0.06] px-5 py-3.5">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+              Up next
+            </span>
+            <span className="font-mono text-[15px] font-bold">{nextMatch.label}</span>
+            <span className="text-[14px] text-muted">
+              ~{formatClock(nextMatch.time, nextMatch.timezone)}
+            </span>
+          </div>
+          <Link
+            href={`/events/${season}/${nextMatch.eventCode}`}
+            className="text-[13px] text-muted no-underline hover:text-foreground"
+          >
+            {nextMatch.eventName} →
+          </Link>
+        </div>
+      )}
+
       {/* Header card */}
       <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
         <div className="flex flex-wrap items-start justify-between gap-[18px]">

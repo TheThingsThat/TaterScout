@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     template: "%s · TaterScout",
   },
   description:
-    "A FIRST Tech Challenge scouting dashboard: team EPA & OPR, event rankings, and match results in one place.",
+    "A FIRST Tech Challenge scouting dashboard: team EPA & OPR, win predictions, strength of schedule, event rankings, and match results in one place.",
 };
 
 export default function RootLayout({

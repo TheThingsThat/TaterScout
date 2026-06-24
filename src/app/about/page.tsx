@@ -24,8 +24,9 @@ export default function AboutPage() {
       </h1>
       <p className="mt-[18px] text-[17px] leading-[1.6] text-muted">
         TaterScout pulls FIRST Tech Challenge data into a single scouting
-        dashboard so you don&apos;t have to juggle multiple sites — team ratings,
-        rankings, match results, and season trajectories in one place.
+        dashboard so you don&apos;t have to juggle multiple sites — team ratings
+        (EPA &amp; OPR), world rankings, event results, season trajectories,
+        Monte-Carlo predictions, and strength of schedule, all in one place.
       </p>
 
       <div className="mt-[34px] grid gap-4">
@@ -42,14 +43,16 @@ export default function AboutPage() {
           . No login required.
         </Card>
 
-        <Card title="What the stats mean">
-          <strong className={STRONG}>OPR (Offensive Power Rating)</strong> is a
-          least-squares estimate of how many points a team contributes to its
-          alliance, computed across all of a team&apos;s matches in a season.
-          It&apos;s split into <strong className={STRONG}>Auto</strong>{" "}
-          (autonomous), <strong className={STRONG}>TeleOp</strong>{" "}
-          (driver-controlled) and <strong className={STRONG}>Endgame</strong>{" "}
-          components. Ranks are world-wide for the selected season.
+        <Card title="OPR — Offensive Power Rating">
+          <strong className={STRONG}>OPR</strong> is a least-squares estimate of
+          how many points a team contributes to its alliance, solved over
+          qualification matches and split into{" "}
+          <strong className={STRONG}>Auto</strong> (autonomous) and{" "}
+          <strong className={STRONG}>TeleOp</strong> (driver-controlled). We use
+          FTCScout&apos;s official OPR: the team&apos;s best single-event value on
+          the world rankings leaderboard, and the exact per-event value on each
+          event page. The trajectory chart additionally computes OPR after every
+          match.
         </Card>
 
         <Card title="EPA — Expected Points Added">
@@ -70,14 +73,43 @@ export default function AboutPage() {
             Statbotics EPA model
           </a>{" "}
           (adapted from FRC&apos;s 3-team alliances to FTC&apos;s 2-team format).
-          Unlike OPR, EPA accounts for win margin and schedule strength.
+          Unlike OPR, EPA accounts for win margin and schedule strength. Event
+          pages are time-aware: they show each team&apos;s EPA as of the end of
+          that event, and predictions use a team&apos;s rating{" "}
+          <em>entering</em> the event, so there&apos;s no hindsight.
+        </Card>
+
+        <Card title="Predictions">
+          Every event page runs thousands of Monte-Carlo simulations — generating
+          schedules, tabulating ranking points, selecting alliances and playing
+          out the bracket — to estimate each team&apos;s{" "}
+          <strong className={STRONG}>win probability</strong>,{" "}
+          <strong className={STRONG}>predicted seed</strong> and{" "}
+          <strong className={STRONG}>make-playoffs odds</strong>. Unplayed matches
+          show a per-match win&nbsp;%. It adapts Statbotics&apos; approach to
+          FTC&apos;s 2v2 format.
+        </Card>
+
+        <Card title="Strength of schedule">
+          How lucky was a team&apos;s qualification draw? TaterScout compares the
+          real schedule against thousands of random ones to produce three
+          percentiles — <strong className={STRONG}>Δ RP</strong>,{" "}
+          <strong className={STRONG}>Δ Rank</strong> and{" "}
+          <strong className={STRONG}>Δ EPA</strong> — and a composite, where
+          higher means a harder draw. Toggle between pre- and post-event ratings.
+        </Card>
+
+        <Card title="Live data">
+          The <strong className={STRONG}>↻ refresh</strong> button in the header
+          pulls the latest results straight from FTCScout. It only fetches the
+          events that changed since the last sync and recomputes the affected
+          ratings — so a match that just finished shows up in seconds.
         </Card>
 
         <Card title="On the roadmap">
           <ul className="m-0 list-disc pl-5 leading-[1.8]">
-            <li>EPA/OPR-based match win probabilities</li>
-            <li>Monte-Carlo event / playoff simulation</li>
             <li>Side-by-side alliance comparison for pick lists</li>
+            <li>A multi-division &ldquo;win the Championship&rdquo; projection</li>
           </ul>
         </Card>
       </div>

@@ -31,6 +31,28 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
+/** Clock time like "3:45 PM" in the event's local timezone. */
+export function formatClock(
+  value: string | number | null | undefined,
+  timezone?: string,
+): string {
+  if (value === null || value === undefined) return "—";
+  const ms = typeof value === "number" ? value : Date.parse(value);
+  if (Number.isNaN(ms)) return "—";
+  try {
+    return new Date(ms).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: timezone || undefined,
+    });
+  } catch {
+    return new Date(ms).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+}
+
 export function locationStr(
   loc: { city?: string | null; state?: string | null; country?: string | null } | null | undefined,
 ): string {

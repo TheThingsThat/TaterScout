@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { getTrajectoriesData } from "@/lib/data/store";
 
-// Compact stored point: [tMinutes, eventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null]
-type RawPoint = [number, number, number, number, number, number | null, number | null];
+// Compact stored point:
+// [tMinutes, eventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, matchNum?, series?]
+type RawPoint = [number, number, number, number, number, number | null, number | null, number?, number?, number?];
 
 interface FileShape {
   season: number;
@@ -17,6 +17,9 @@ export interface TrajPoint {
   eventCode: string;
   eventName: string | null;
   playoff: boolean;
+  noShow: boolean; // a no-show/uneven match (an alliance lacked 2 robots)
+  matchNum: number; // real competition match number (e.g. Q15 → 15)
+  series: number; // playoff series (0 for quals)
   epa: number;
   epaAuto: number;
   epaTele: number;
@@ -38,23 +41,9 @@ export interface Trajectory {
   segments: EventSegment[];
 }
 
-// Cache successful loads only (the file is large; re-parsing per request is slow).
-const cache = new Map<number, FileShape>();
-
+// Read from the in-process store (refreshable at runtime).
 function load(season: number): FileShape | null {
-  const c = cache.get(season);
-  if (c) return c;
-  try {
-    const dir =
-      process.env.VIBESCOUT_DATA_DIR || path.join(process.cwd(), "src", "data");
-    const data = JSON.parse(
-      readFileSync(path.join(dir, `trajectories-${season}.json`), "utf8"),
-    ) as FileShape;
-    cache.set(season, data);
-    return data;
-  } catch {
-    return null;
-  }
+  return getTrajectoriesData(season) as unknown as FileShape | null;
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -74,6 +63,9 @@ export function getTrajectory(season: number, team: number): Trajectory | null {
       eventCode: ev?.c ?? "",
       eventName: ev?.n ?? null,
       playoff: p[2] === 1,
+      noShow: p[7] === 1,
+      matchNum: p[8] ?? 0,
+      series: p[9] ?? 0,
       epaAuto: p[3],
       epaTele: p[4],
       epa: r1(p[3] + p[4]),

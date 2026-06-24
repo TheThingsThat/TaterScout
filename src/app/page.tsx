@@ -11,26 +11,26 @@ const SEASON_TITLE = `${seasonName(CURRENT_SEASON)} · ${seasonLabel(CURRENT_SEA
 const FEATURES = [
   {
     title: "Team profiles",
-    body: "EPA and OPR ratings with auto/TeleOp splits, world rankings and a full event history.",
+    body: "EPA and OPR with auto/TeleOp splits, world rankings, and an interactive per-match EPA & OPR trajectory chart.",
     tag: "Live",
     rects: [[4, 0], [0, 4], [4, 4], [8, 4], [4, 8]],
   },
   {
     title: "Event dashboards",
-    body: "Rankings by OPR, the full match schedule, and red/blue results with winners highlighted.",
+    body: "Time-aware rankings as of each event, the full schedule with predicted match times, and red/blue results.",
     tag: "Live",
     rects: [[0, 0], [4, 0], [8, 0], [2, 4], [6, 4], [0, 8], [4, 8], [8, 8]],
   },
   {
-    title: "Match predictions",
-    body: "EPA and OPR-based win probabilities and a Monte-Carlo playoff simulator.",
-    tag: "Soon",
+    title: "Predictions",
+    body: "Monte-Carlo win probabilities, predicted seeds and make-playoffs odds, plus a per-match win % for unplayed matches.",
+    tag: "Live",
     rects: [[0, 6], [3, 3], [6, 0], [3, 8], [8, 5]],
   },
   {
-    title: "Alliance compare",
-    body: "Stack teams side-by-side to prep alliance selection and scouting strategy.",
-    tag: "Soon",
+    title: "Strength of schedule",
+    body: "How lucky was a team's draw? Δ RP, Δ Rank and Δ EPA percentiles versus thousands of random schedules.",
+    tag: "Live",
     rects: [[0, 0], [0, 4], [0, 8], [8, 0], [8, 4], [8, 8]],
   },
 ];
@@ -152,8 +152,8 @@ export default function Home() {
             <span className="italic text-accent">one dashboard.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-[560px] text-balance text-[18px] leading-[1.55] text-muted">
-            Search any FIRST Tech Challenge team or event to see EPA, OPR,
-            rankings, and match results.
+            Search any FIRST Tech Challenge team or event for EPA, OPR, win
+            predictions, strength of schedule, and rankings.
           </p>
           <div className="mx-auto mt-[34px] max-w-[520px]">
             <SearchBar size="lg" />

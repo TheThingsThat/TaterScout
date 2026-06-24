@@ -33,6 +33,8 @@ export interface TeamEventLite {
     code: string;
     start: string;
     type: string;
+    ongoing: boolean;
+    timezone: string;
     location: Location;
   };
 }
@@ -90,8 +92,18 @@ export interface Match {
   tournamentLevel: string; // "Quals" | "DoubleElim" | "Finals" | ...
   series: number;
   hasBeenPlayed: boolean;
+  scheduledStartTime: string | null;
+  actualStartTime: string | null;
+  postResultTime: string | null;
   teams: MatchTeam[];
   scores: MatchScores | null;
+}
+
+/** Per-event OPR from FTCScout (no-penalty, quals-only). */
+export interface EventOpr {
+  totalPointsNp: number | null;
+  autoPoints: number | null;
+  dcPoints: number | null;
 }
 
 export interface EventTeam {
@@ -100,6 +112,8 @@ export interface EventTeam {
     name: string;
     quickStats: QuickStats | null;
   };
+  // FTCScout's per-event stats (event-scoped, not season).
+  stats: { opr: EventOpr | null } | null;
 }
 
 export interface EventDetail {
@@ -113,6 +127,9 @@ export interface EventDetail {
   ongoing: boolean;
   started: boolean;
   finished: boolean;
+  timezone: string;
+  divisionCode: string | null;
+  relatedEvents: { code: string; divisionCode: string | null; type: string }[];
   location: Location;
   website: string | null;
   teams: EventTeam[];

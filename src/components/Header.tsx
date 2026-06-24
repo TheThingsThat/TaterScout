@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SearchBar from "./SearchBar";
 import NavLinks from "./NavLinks";
+import RefreshButton from "./RefreshButton";
 
 export default function Header() {
   return (
@@ -15,6 +16,7 @@ export default function Header() {
           <SearchBar />
         </div>
         <NavLinks />
+        <RefreshButton />
       </div>
     </header>
   );

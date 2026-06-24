@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { EventTeam } from "@/lib/ftc/types";
 import type { TeamRanking } from "@/lib/rankings";
+import type { EventTeamStat } from "@/lib/eventStats";
 import { fmt } from "@/lib/format";
 
 const TH =
@@ -9,18 +10,38 @@ const TH =
 export default function EventRankings({
   teams,
   season,
+  stats,
   epa,
 }: {
   teams: EventTeam[];
   season: number;
+  // Post-event (as-of-end-of-event) ratings, keyed by team number.
+  stats: Map<number, EventTeamStat>;
+  // Season ratings — fallback when a team/event isn't in the snapshot.
   epa: Map<number, TeamRanking>;
 }) {
-  const hasEpa = epa.size > 0;
+  // Resolve each team's displayed row.
+  //  EPA → post-event snapshot (FTCScout has no EPA), season EPA as fallback.
+  //  OPR → FTCScout's authoritative per-event OPR; computed snapshot / season
+  //        quickStats only as deeper fallbacks (e.g. an event with no stats yet).
+  const rowOf = (t: EventTeam) => {
+    const s = stats.get(t.teamNumber);
+    const qs = t.team.quickStats;
+    const evOpr = t.stats?.opr;
+    return {
+      epa: s?.epa ?? epa.get(t.teamNumber)?.epa ?? null,
+      oprNp: evOpr?.totalPointsNp ?? s?.oprNp ?? qs?.tot.value ?? null,
+      oprAuto: evOpr?.autoPoints ?? s?.oprAuto ?? qs?.auto.value ?? null,
+      oprTele: evOpr?.dcPoints ?? s?.oprTele ?? qs?.dc.value ?? null,
+    };
+  };
+  const hasEpa = stats.size > 0 || epa.size > 0;
+  const timeAware = stats.size > 0;
 
   const ranked = [...teams].sort((a, b) => {
     if (hasEpa) {
-      const ae = epa.get(a.teamNumber)?.epa ?? -Infinity;
-      const be = epa.get(b.teamNumber)?.epa ?? -Infinity;
+      const ae = rowOf(a).epa ?? -Infinity;
+      const be = rowOf(b).epa ?? -Infinity;
       if (ae !== be) return be - ae;
     }
     const av = a.team.quickStats?.tot.value ?? -Infinity;
@@ -58,8 +79,7 @@ export default function EventRankings({
           </thead>
           <tbody>
             {ranked.map((t, i) => {
-              const qs = t.team.quickStats;
-              const te = epa.get(t.teamNumber);
+              const row = rowOf(t);
               return (
                 <tr
                   key={t.teamNumber}
@@ -77,17 +97,17 @@ export default function EventRankings({
                   </td>
                   {hasEpa && (
                     <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#2f8bff" }}>
-                      {fmt(te?.epa)}
+                      {fmt(row.epa)}
                     </td>
                   )}
                   <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "#3ecf76" }}>
-                    {fmt(qs?.tot.value)}
+                    {fmt(row.oprNp)}
                   </td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums text-[#6b6f78]">
-                    {fmt(qs?.auto.value)}
+                    {fmt(row.oprAuto)}
                   </td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums text-[#6b6f78]">
-                    {fmt(qs?.dc.value)}
+                    {fmt(row.oprTele)}
                   </td>
                 </tr>
               );
@@ -96,9 +116,11 @@ export default function EventRankings({
         </table>
       </div>
       <p className="px-3.5 py-[11px] text-[11px] text-[#6b6f78]">
-        {hasEpa
-          ? "Ranked by season EPA (Expected Points Added). OPR shown alongside."
-          : "Ranked by season Total OPR."}
+        {timeAware
+          ? "EPA & OPR as of the end of this event (not season-final). Ranked by EPA."
+          : hasEpa
+            ? "Ranked by season EPA (Expected Points Added). OPR shown alongside."
+            : "Ranked by season Total OPR."}
       </p>
     </div>
   );

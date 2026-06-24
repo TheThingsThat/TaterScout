@@ -116,7 +116,15 @@ export async function getTeam(
         ${QUICK_STATS}
         events(season: $season) {
           eventCode
-          event { name code start type location { city state country } }
+          event {
+            name
+            code
+            start
+            type
+            ongoing
+            timezone
+            location { city state country }
+          }
         }
         awards(season: $season) {
           type
@@ -193,6 +201,13 @@ export async function getEvent(
        } }`
     : "";
 
+  // Per-event OPR straight from FTCScout (authoritative; quals-only, no-penalty).
+  const eventStats = seasonHasSimpleScores(season)
+    ? `stats { ... on TeamEventStats${season} {
+         opr { totalPointsNp autoPoints dcPoints }
+       } }`
+    : "";
+
   const query = `
     query Event($season: Int!, $code: String!) {
       eventByCode(season: $season, code: $code) {
@@ -206,6 +221,9 @@ export async function getEvent(
         ongoing
         started
         finished
+        timezone
+        divisionCode
+        relatedEvents { code divisionCode type }
         website
         location { city state country }
         teams {
@@ -214,12 +232,16 @@ export async function getEvent(
             name
             ${QUICK_STATS}
           }
+          ${eventStats}
         }
         matches {
           matchNum
           tournamentLevel
           series
           hasBeenPlayed
+          scheduledStartTime
+          actualStartTime
+          postResultTime
           teams { teamNumber alliance station allianceRole surrogate onField }
           ${scores}
         }
@@ -230,5 +252,48 @@ export async function getEvent(
     season,
     code,
   });
+  return data.eventByCode;
+}
+
+/** Lightweight match list for an event (times + team numbers only) — used for
+ *  the team page "next match" lookup, avoiding the full event/quickStats fetch. */
+export interface EventMatchLite {
+  timezone: string;
+  matches: {
+    matchNum: number;
+    tournamentLevel: string;
+    series: number;
+    hasBeenPlayed: boolean;
+    scheduledStartTime: string | null;
+    actualStartTime: string | null;
+    teams: { teamNumber: number }[];
+  }[];
+}
+
+export async function getEventMatches(
+  season: number,
+  code: string,
+): Promise<EventMatchLite | null> {
+  const query = `
+    query EventMatches($season: Int!, $code: String!) {
+      eventByCode(season: $season, code: $code) {
+        timezone
+        matches {
+          matchNum
+          tournamentLevel
+          series
+          hasBeenPlayed
+          scheduledStartTime
+          actualStartTime
+          teams { teamNumber }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ eventByCode: EventMatchLite | null }>(
+    query,
+    { season, code },
+    30,
+  );
   return data.eventByCode;
 }
