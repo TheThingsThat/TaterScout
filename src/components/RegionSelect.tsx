@@ -23,18 +23,23 @@ export default function RegionSelect({
   }
 
   return (
-    <select
-      value={value}
-      onChange={onChange}
-      className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
-      aria-label="Filter by region"
-    >
-      <option value="">All regions</option>
-      {regions.map((r) => (
-        <option key={r} value={r}>
-          {r}
-        </option>
-      ))}
-    </select>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={onChange}
+        aria-label="Filter by region"
+        className="cursor-pointer rounded-full border border-[#232323] bg-[#0c0c0c] py-[9px] pl-4 pr-9 text-[14px] text-foreground outline-none focus:border-accent"
+      >
+        <option value="">All regions</option>
+        {regions.map((r) => (
+          <option key={r} value={r} style={{ background: "#0c0c0c" }}>
+            {r}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-[#6b6f78]">
+        ▼
+      </span>
+    </div>
   );
 }

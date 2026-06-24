@@ -18,11 +18,14 @@ interface EventHit {
   location: { city?: string | null; state?: string | null; country?: string | null };
 }
 
-type Flat =
-  | { kind: "team"; href: string; primary: string; secondary: string }
-  | { kind: "event"; href: string; primary: string; secondary: string };
+type Flat = {
+  kind: "team" | "event";
+  href: string;
+  primary: string;
+  secondary: string;
+};
 
-export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }) {
+export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -32,7 +35,6 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
   const boxRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Debounced fetch.
   useEffect(() => {
     const term = q.trim();
     if (term.length < 2) {
@@ -68,7 +70,7 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
         setHits(flat);
         setActive(0);
       } catch {
-        /* aborted or failed — ignore */
+        /* aborted */
       } finally {
         setLoading(false);
       }
@@ -76,7 +78,6 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
     return () => clearTimeout(t);
   }, [q]);
 
-  // Close on outside click.
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
@@ -96,11 +97,8 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") {
-      if (hits[active]) {
-        go(hits[active].href);
-      } else if (/^\d{1,6}$/.test(q.trim())) {
-        go(`/teams/${q.trim()}`);
-      }
+      if (hits[active]) go(hits[active].href);
+      else if (/^\d{1,6}$/.test(q.trim())) go(`/teams/${q.trim()}`);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => Math.min(a + 1, hits.length - 1));
@@ -113,16 +111,26 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
   }
 
   const showDrop = open && q.trim().length >= 2;
+  const lg = size === "lg";
 
   return (
     <div ref={boxRef} className="relative w-full">
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2 focus-within:border-accent transition-colors">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-muted shrink-0">
-          <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-          <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <div
+        className={`flex items-center gap-2.5 rounded-full border border-[#232323] bg-[#0c0c0c] transition-colors focus-within:border-accent ${
+          lg ? "px-[22px] py-[14px]" : "px-4 py-[9px]"
+        }`}
+      >
+        <svg
+          width={lg ? "18" : "15"}
+          height={lg ? "18" : "15"}
+          viewBox="0 0 24 24"
+          fill="none"
+          className="shrink-0"
+        >
+          <circle cx="11" cy="11" r="7" stroke="#6b6f78" strokeWidth="2" />
+          <path d="M20 20l-3.5-3.5" stroke="#6b6f78" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <input
-          autoFocus={autoFocus}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -131,45 +139,49 @@ export default function SearchBar({ autoFocus = false }: { autoFocus?: boolean }
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="Search teams or events…"
-          className="w-full bg-transparent text-sm text-foreground placeholder:text-muted outline-none"
           aria-label="Search teams or events"
+          className={`w-full bg-transparent text-foreground outline-none placeholder:text-[#6b6f78] ${
+            lg ? "text-[16px]" : "text-[14px]"
+          }`}
         />
         {loading && (
-          <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border border-t-accent" />
+          <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#232323] border-t-accent" />
         )}
       </div>
 
       {showDrop && (
-        <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+        <div
+          className="ts-scroll absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-[18px] border border-[#232323] bg-[#0a0a0a] text-left shadow-[0_24px_60px_rgba(0,0,0,0.7)]"
+          style={{ maxHeight: 360, overflowY: "auto" }}
+        >
           {hits.length === 0 && !loading ? (
-            <div className="px-4 py-3 text-sm text-muted">
-              No results for “{q.trim()}”.
-            </div>
+            <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">No results.</div>
           ) : (
-            <ul className="max-h-80 overflow-y-auto scroll-thin py-1">
+            <ul className="py-0">
               {hits.map((h, i) => (
                 <li key={h.href}>
                   <button
                     onMouseEnter={() => setActive(i)}
                     onClick={() => go(h.href)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left ${
-                      i === active ? "bg-surface-2" : ""
+                    className={`flex w-full items-center gap-3 border-t border-[#161616] px-4 py-[11px] text-left first:border-t-0 ${
+                      i === active ? "bg-[#121212]" : ""
                     }`}
                   >
                     <span
-                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      className="shrink-0 rounded-md px-[7px] py-[3px] font-mono text-[9px] font-bold uppercase tracking-[0.1em]"
+                      style={
                         h.kind === "team"
-                          ? "bg-accent/15 text-accent"
-                          : "bg-accent-2/15 text-accent-2"
-                      }`}
+                          ? { background: "rgba(205,14,14,0.18)", color: "#ff7a7a" }
+                          : { background: "rgba(54,214,194,0.16)", color: "#56e0cf" }
+                      }
                     >
                       {h.kind}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-foreground">
+                      <span className="block truncate text-[13px] text-foreground">
                         {h.primary}
                       </span>
-                      <span className="block truncate text-xs text-muted">
+                      <span className="block truncate text-[11px] text-[#6b6f78]">
                         {h.secondary}
                       </span>
                     </span>

@@ -21,20 +21,20 @@ function parseSeason(raw?: string): number {
   return Number.isFinite(n) && n > 2018 ? n : CURRENT_SEASON;
 }
 
-export async function generateMetadata({
-  params,
-}: Props): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { number } = await params;
   try {
     const team = await getTeam(Number(number), CURRENT_SEASON);
-    if (team) {
-      return { title: `${team.number} ${team.name}` };
-    }
+    if (team) return { title: `${team.number} ${team.name}` };
   } catch {
     /* ignore */
   }
   return { title: `Team ${number}` };
 }
+
+const HEADING = "font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
+const OUTLINE_BTN =
+  "rounded-[10px] border border-[#232323] px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-[#3a3a3a] hover:text-foreground";
 
 export default async function TeamPage({ params, searchParams }: Props) {
   const { number } = await params;
@@ -45,7 +45,6 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const team = await getTeam(num, season);
   if (!team) notFound();
 
-  // The API can return duplicate seasons (e.g. 2025 twice), so de-dupe.
   const seasons =
     team.activeSeasons.length > 0
       ? [...new Set(team.activeSeasons)].sort((a, b) => b - a)
@@ -62,32 +61,35 @@ export default async function TeamPage({ params, searchParams }: Props) {
   );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
+      {/* Header card */}
+      <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
+        <div className="flex flex-wrap items-start justify-between gap-[18px]">
           <div>
-            <div className="flex items-center gap-3">
-              <span className="rounded-lg bg-surface-2 px-2.5 py-1 font-mono text-lg font-bold text-accent">
+            <div className="flex items-center gap-3.5">
+              <span
+                className="rounded-[10px] px-3 py-1 font-mono text-[20px] font-bold text-accent"
+                style={{
+                  background: "rgba(205,14,14,0.12)",
+                  border: "1px solid rgba(205,14,14,0.3)",
+                }}
+              >
                 {team.number}
               </span>
-              <h1 className="text-2xl font-bold tracking-tight">{team.name}</h1>
+              <h1 className="m-0 text-[clamp(28px,4vw,40px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+                {team.name}
+              </h1>
             </div>
-            <p className="mt-2 text-sm text-muted">
+            <p className="mt-3.5 text-[14px] text-muted">
               {locationStr(team.location)} · Rookie year {team.rookieYear}
             </p>
             {team.schoolName && (
-              <p className="text-sm text-muted">{team.schoolName}</p>
+              <p className="mt-1 text-[14px] text-[#6b6f78]">{team.schoolName}</p>
             )}
           </div>
-          <div className="flex gap-2 text-sm">
+          <div className="flex gap-2.5">
             {team.website && (
-              <a
-                href={team.website}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-border px-3 py-1.5 text-muted hover:text-foreground"
-              >
+              <a href={team.website} target="_blank" rel="noreferrer" className={OUTLINE_BTN}>
                 Website ↗
               </a>
             )}
@@ -95,7 +97,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
               href={`https://ftcscout.org/teams/${team.number}`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-border px-3 py-1.5 text-muted hover:text-foreground"
+              className={OUTLINE_BTN}
             >
               FTCScout ↗
             </a>
@@ -104,19 +106,20 @@ export default async function TeamPage({ params, searchParams }: Props) {
       </div>
 
       {/* Season tabs */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs uppercase tracking-wide text-muted">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
           Season
         </span>
         {seasons.map((s) => (
           <Link
             key={s}
             href={`/teams/${team.number}?season=${s}`}
-            className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            className="rounded-[10px] px-3.5 py-2 text-[13px] transition-colors"
+            style={
               s === season
-                ? "bg-accent text-background font-medium"
-                : "border border-border text-muted hover:text-foreground"
-            }`}
+                ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
+                : { border: "1px solid #232323", color: "#9aa0aa" }
+            }
           >
             {seasonLabel(s)}
           </Link>
@@ -126,23 +129,17 @@ export default async function TeamPage({ params, searchParams }: Props) {
       {/* EPA */}
       {epa && (
         <section>
-          <div className="mb-3 flex items-baseline gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              {seasonFull(season)} — EPA
-            </h2>
-            <span className="text-[11px] text-muted">
-              Expected Points Added
-            </span>
+          <div className="mb-3.5 flex items-baseline gap-2.5">
+            <h2 className={HEADING}>{seasonFull(season)} — EPA</h2>
+            <span className="text-[11px] text-[#6b6f78]">Expected Points Added</span>
           </div>
           <EpaTiles team={epa} teamCount={epaTeamCount} />
         </section>
       )}
 
-      {/* Stats */}
+      {/* OPR */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          {seasonFull(season)} — OPR
-        </h2>
+        <h2 className={`mb-3.5 ${HEADING}`}>{seasonFull(season)} — OPR</h2>
         {team.quickStats ? (
           <StatTiles stats={team.quickStats} />
         ) : (
@@ -155,13 +152,9 @@ export default async function TeamPage({ params, searchParams }: Props) {
       {/* Trajectory */}
       {traj && traj.points.length > 1 && (
         <section>
-          <div className="mb-3 flex items-baseline gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              Season Trajectory
-            </h2>
-            <span className="text-[11px] text-muted">
-              EPA &amp; OPR per match
-            </span>
+          <div className="mb-3.5 flex items-baseline gap-2.5">
+            <h2 className={HEADING}>Season Trajectory</h2>
+            <span className="text-[11px] text-[#6b6f78]">EPA &amp; OPR per match</span>
           </div>
           <TrajectoryChart points={traj.points} segments={traj.segments} />
         </section>
@@ -169,35 +162,33 @@ export default async function TeamPage({ params, searchParams }: Props) {
 
       {/* Events */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          Events ({events.length})
-        </h2>
+        <h2 className={`mb-3.5 ${HEADING}`}>Events ({events.length})</h2>
         {events.length === 0 ? (
           <div className="card p-6 text-center text-sm text-muted">
             No events in {seasonLabel(season)}.
           </div>
         ) : (
-          <div className="card divide-y divide-border overflow-hidden">
+          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
             {events.map((e) => (
               <Link
                 key={e.eventCode}
                 href={`/events/${season}/${e.eventCode}`}
-                className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-surface-2"
+                className="flex items-center justify-between gap-4 border-t border-[#141414] px-5 py-[15px] no-underline transition-colors first:border-t-0 hover:bg-[#101010]"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{e.event.name}</div>
-                  <div className="truncate text-xs text-muted">
+                  <div className="truncate font-medium text-[#e7eaf0]">{e.event.name}</div>
+                  <div className="truncate text-[12px] text-[#6b6f78]">
                     {locationStr(e.event.location)}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
+                <div className="flex shrink-0 items-center gap-3.5">
+                  <span className="rounded-[7px] bg-[#161616] px-[9px] py-[3px] font-mono text-[11px] text-muted">
                     {eventTypeLabel(e.event.type)}
                   </span>
-                  <span className="hidden text-xs text-muted sm:block">
+                  <span className="hidden text-[12px] text-[#6b6f78] sm:block">
                     {formatDate(e.event.start)}
                   </span>
-                  <span className="text-muted">→</span>
+                  <span className="text-[#6b6f78]">→</span>
                 </div>
               </Link>
             ))}
@@ -208,14 +199,16 @@ export default async function TeamPage({ params, searchParams }: Props) {
       {/* Awards */}
       {team.awards.length > 0 && (
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-            Awards ({team.awards.length})
-          </h2>
-          <div className="flex flex-wrap gap-2">
+          <h2 className={`mb-3.5 ${HEADING}`}>Awards ({team.awards.length})</h2>
+          <div className="flex flex-wrap gap-2.5">
             {team.awards.map((a, i) => (
               <span
                 key={`${a.type}-${a.eventCode}-${i}`}
-                className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-1.5 text-sm text-gold"
+                className="rounded-[10px] px-3.5 py-2 text-[14px] text-gold"
+                style={{
+                  border: "1px solid rgba(255,194,75,0.3)",
+                  background: "rgba(255,194,75,0.08)",
+                }}
               >
                 {awardLabel(a.type)}
                 {a.placement > 0 ? ` #${a.placement}` : ""}

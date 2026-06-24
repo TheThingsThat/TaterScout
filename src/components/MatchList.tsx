@@ -19,7 +19,7 @@ function AllianceCell({
   won: boolean;
   align: "left" | "right";
 }) {
-  const color = side === "Red" ? "text-red" : "text-blue";
+  const color = won ? (side === "Red" ? "#ff5d6c" : "#4d8dff") : "#6b6f78";
   return (
     <div
       className={`flex flex-col gap-0.5 ${
@@ -30,9 +30,8 @@ function AllianceCell({
         <Link
           key={t.teamNumber}
           href={`/teams/${t.teamNumber}`}
-          className={`font-mono text-sm hover:underline ${
-            won ? color : "text-muted"
-          } ${won ? "font-semibold" : ""}`}
+          className="font-mono text-[13px] hover:underline"
+          style={{ color, fontWeight: won ? 700 : 400 }}
         >
           {t.teamNumber}
           {t.surrogate ? "*" : ""}
@@ -42,7 +41,7 @@ function AllianceCell({
   );
 }
 
-function MatchRow({ m, season }: { m: Match; season: number }) {
+function MatchRow({ m }: { m: Match }) {
   const red = m.teams
     .filter((t) => t.alliance === "Red")
     .sort((a, b) => a.station.localeCompare(b.station));
@@ -56,26 +55,24 @@ function MatchRow({ m, season }: { m: Match; season: number }) {
   const redWon = played && (redScore as number) > (blueScore as number);
   const blueWon = played && (blueScore as number) > (redScore as number);
 
-  void season;
-
   return (
-    <div className="grid grid-cols-[2.5rem_1fr] items-center gap-2 px-4 py-2.5 hover:bg-surface-2">
-      <span className="font-mono text-xs text-muted">{matchCode(m)}</span>
+    <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] transition-colors first:border-t-0 hover:bg-[#101010]">
+      <span className="font-mono text-[12px] text-[#6b6f78]">{matchCode(m)}</span>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <AllianceCell teams={red} side="Red" won={redWon} align="right" />
-        <div className="flex items-center gap-1.5 font-mono text-sm tabular-nums">
+        <div className="flex items-center gap-1.5 font-mono text-[14px] tabular-nums">
           {played ? (
             <>
-              <span className={redWon ? "font-bold text-red" : "text-muted"}>
+              <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
                 {redScore}
               </span>
-              <span className="text-border">–</span>
-              <span className={blueWon ? "font-bold text-blue" : "text-muted"}>
+              <span className="text-[#3a3f48]">–</span>
+              <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
                 {blueScore}
               </span>
             </>
           ) : (
-            <span className="text-xs text-muted">vs</span>
+            <span className="text-[12px] text-[#6b6f78]">vs</span>
           )}
         </div>
         <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" />
@@ -86,7 +83,6 @@ function MatchRow({ m, season }: { m: Match; season: number }) {
 
 export default function MatchList({
   matches,
-  season,
 }: {
   matches: Match[];
   season: number;
@@ -100,8 +96,8 @@ export default function MatchList({
     groups.get(key)!.push(m);
   }
 
-  // Quals first, then everything else.
-  const order = (k: string) => (k === "Quals" ? 0 : 1);
+  // Playoffs first, then qualification.
+  const order = (k: string) => (k === "Quals" ? 1 : 0);
   const keys = [...groups.keys()].sort((a, b) => order(a) - order(b));
 
   if (withTeams.length === 0) {
@@ -120,13 +116,12 @@ export default function MatchList({
         );
         return (
           <div key={k}>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              {tournamentLevelLabel(k)}{" "}
-              <span className="text-border">({ms.length})</span>
+            <h3 className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+              {tournamentLevelLabel(k)} <span className="text-[#3a3f48]">({ms.length})</span>
             </h3>
-            <div className="card divide-y divide-border/50 overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
               {ms.map((m) => (
-                <MatchRow key={`${m.tournamentLevel}-${m.series}-${m.matchNum}`} m={m} season={season} />
+                <MatchRow key={`${m.tournamentLevel}-${m.series}-${m.matchNum}`} m={m} />
               ))}
             </div>
           </div>

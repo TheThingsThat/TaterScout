@@ -1,16 +1,17 @@
 import type { QuickStats, QuickStat } from "@/lib/ftc/types";
 import { fmt, ordinal, rankPercentile } from "@/lib/format";
 
+const OPR = "var(--opr)";
+
 const TILES: {
   key: keyof Pick<QuickStats, "tot" | "auto" | "dc" | "eg">;
   label: string;
   hint: string;
-  accent: string;
 }[] = [
-  { key: "tot", label: "Total OPR", hint: "Overall scoring power", accent: "var(--accent)" },
-  { key: "auto", label: "Auto", hint: "Autonomous period", accent: "var(--accent-2)" },
-  { key: "dc", label: "TeleOp", hint: "Driver-controlled", accent: "var(--blue)" },
-  { key: "eg", label: "Endgame", hint: "End of match", accent: "var(--gold)" },
+  { key: "tot", label: "Total OPR", hint: "Overall" },
+  { key: "auto", label: "Auto", hint: "Autonomous" },
+  { key: "dc", label: "TeleOp", hint: "Driver" },
+  { key: "eg", label: "Endgame", hint: "End of match" },
 ];
 
 function Tile({
@@ -18,40 +19,32 @@ function Tile({
   hint,
   stat,
   count,
-  accent,
 }: {
   label: string;
   hint: string;
   stat: QuickStat;
   count: number;
-  accent: string;
 }) {
   const pct = rankPercentile(stat.rank, count);
   return (
-    <div className="card p-4">
+    <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
           {label}
         </span>
-        <span className="text-[11px] text-muted">{hint}</span>
+        <span className="text-[10px] text-[#6b6f78]">{hint}</span>
       </div>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-3xl font-bold tabular-nums" style={{ color: accent }}>
+      <div className="mt-2.5 flex items-baseline gap-2">
+        <span className="text-[26px] font-bold tabular-nums" style={{ color: OPR }}>
           {fmt(stat.value)}
         </span>
-        <span className="text-xs text-muted">
+        <span className="text-[12px] text-[#6b6f78]">
           {ordinal(stat.rank)}
           {count ? ` / ${count.toLocaleString()}` : ""}
         </span>
       </div>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${pct}%`, background: accent }}
-        />
-      </div>
-      <div className="mt-1 text-[11px] text-muted">
-        Top {Math.max(0.1, 100 - pct).toFixed(pct > 99 ? 1 : 0)}%
+      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-[#161616]">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: OPR }} />
       </div>
     </div>
   );
@@ -59,16 +52,9 @@ function Tile({
 
 export default function StatTiles({ stats }: { stats: QuickStats }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
       {TILES.map((t) => (
-        <Tile
-          key={t.key}
-          label={t.label}
-          hint={t.hint}
-          stat={stats[t.key]}
-          count={stats.count}
-          accent={t.accent}
-        />
+        <Tile key={t.key} label={t.label} hint={t.hint} stat={stats[t.key]} count={stats.count} />
       ))}
     </div>
   );

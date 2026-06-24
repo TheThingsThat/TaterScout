@@ -5,20 +5,22 @@ import type { TrajPoint, EventSegment } from "@/lib/trajectory";
 
 type Key = "epa" | "epaAuto" | "epaTele" | "opr" | "oprAuto" | "oprTele";
 
+const EPA = "#2f8bff";
+const OPR = "#3ecf76";
+
 const SERIES: {
   key: Key;
   label: string;
   color: string;
   dash: string;
   width: number;
-  group: "EPA" | "OPR";
 }[] = [
-  { key: "epa", label: "EPA Total", color: "var(--accent-2)", dash: "", width: 2.5, group: "EPA" },
-  { key: "epaAuto", label: "EPA Auto", color: "var(--accent-2)", dash: "5 3", width: 1.5, group: "EPA" },
-  { key: "epaTele", label: "EPA TeleOp", color: "var(--accent-2)", dash: "1.5 3", width: 1.5, group: "EPA" },
-  { key: "opr", label: "OPR Total", color: "var(--accent)", dash: "", width: 2.5, group: "OPR" },
-  { key: "oprAuto", label: "OPR Auto", color: "var(--accent)", dash: "5 3", width: 1.5, group: "OPR" },
-  { key: "oprTele", label: "OPR TeleOp", color: "var(--accent)", dash: "1.5 3", width: 1.5, group: "OPR" },
+  { key: "epa", label: "EPA Total", color: EPA, dash: "", width: 2.5 },
+  { key: "epaAuto", label: "EPA Auto", color: EPA, dash: "5 3", width: 1.5 },
+  { key: "epaTele", label: "EPA TeleOp", color: EPA, dash: "1.5 3", width: 1.5 },
+  { key: "opr", label: "OPR Total", color: OPR, dash: "", width: 2.5 },
+  { key: "oprAuto", label: "OPR Auto", color: OPR, dash: "5 3", width: 1.5 },
+  { key: "oprTele", label: "OPR TeleOp", color: OPR, dash: "1.5 3", width: 1.5 },
 ];
 
 const W = 1000;
@@ -50,7 +52,6 @@ export default function TrajectoryChart({
   const step = n > 1 ? PLOT_W / (n - 1) : 0;
   const xAt = (i: number) => (n > 1 ? PAD.l + i * step : PAD.l + PLOT_W / 2);
 
-  // y-domain from visible series.
   let lo = Infinity;
   let hi = -Infinity;
   for (const p of points) {
@@ -75,14 +76,10 @@ export default function TrajectoryChart({
   hi += padY;
   const yAt = (v: number) => PAD.t + PLOT_H - ((v - lo) / (hi - lo)) * PLOT_H;
 
-  // y gridlines (nice-ish round steps).
   const ticks: number[] = [];
-  const span = hi - lo;
-  const rawStep = span / 4;
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const niceStep = Math.ceil(rawStep / mag) * mag;
-  for (let v = Math.ceil(lo / niceStep) * niceStep; v <= hi; v += niceStep)
-    ticks.push(Math.round(v * 10) / 10);
+  for (let k = 0; k <= 3; k++) {
+    ticks.push(Math.round((lo + ((hi - lo) * k) / 3) * 10) / 10);
+  }
 
   const halfStep = n > 1 ? step / 2 : PLOT_W / 2;
 
@@ -123,20 +120,20 @@ export default function TrajectoryChart({
   const hp = hover !== null ? points[hover] : null;
 
   return (
-    <div className="card p-4">
-      {/* Legend / toggles */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
+    <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+      <div className="mb-3.5 flex flex-wrap gap-2">
         {SERIES.map((s) => {
           const on = visible.has(s.key);
           return (
             <button
               key={s.key}
               onClick={() => toggle(s.key)}
-              className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors ${
+              className="flex items-center gap-1.5 rounded-lg px-[9px] py-[5px] text-[11px] transition-colors"
+              style={
                 on
-                  ? "border-border bg-surface-2 text-foreground"
-                  : "border-transparent text-muted hover:text-foreground"
-              }`}
+                  ? { background: "#161616", border: "1px solid #262626", color: "#f4f5f7" }
+                  : { background: "transparent", border: "1px solid transparent", color: "#6b6f78" }
+              }
             >
               <svg width="16" height="6">
                 <line
@@ -159,12 +156,11 @@ export default function TrajectoryChart({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full select-none"
+        className="block w-full select-none"
         style={{ touchAction: "none" }}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
       >
-        {/* event bands + playoff shading */}
         {segments.map((seg, idx) => {
           const left = Math.max(PAD.l, xAt(seg.start) - halfStep);
           const right = Math.min(W - PAD.r, xAt(seg.end) + halfStep);
@@ -176,33 +172,18 @@ export default function TrajectoryChart({
                 y={PAD.t}
                 width={Math.max(0, right - left)}
                 height={PLOT_H}
-                fill={idx % 2 ? "var(--surface-2)" : "transparent"}
-                opacity={0.4}
+                fill={idx % 2 ? "rgba(255,255,255,0.03)" : "transparent"}
               />
-              <text
-                x={mid}
-                y={H - PAD.b + 16}
-                textAnchor="middle"
-                className="fill-muted"
-                fontSize="10"
-              >
+              <text x={mid} y={H - PAD.b + 20} textAnchor="middle" fill="#6b6f78" fontSize="11" fontFamily="var(--font-spacemono), monospace">
                 {seg.code}
               </text>
-              <text
-                x={mid}
-                y={H - PAD.b + 28}
-                textAnchor="middle"
-                className="fill-muted"
-                fontSize="9"
-                opacity={0.7}
-              >
+              <text x={mid} y={H - PAD.b + 34} textAnchor="middle" fill="#52565e" fontSize="10" fontFamily="var(--font-spacemono), monospace">
                 {fmtDate(points[seg.start].time)}
               </text>
             </g>
           );
         })}
 
-        {/* playoff cells */}
         {points.map((p, i) =>
           p.playoff ? (
             <rect
@@ -212,36 +193,20 @@ export default function TrajectoryChart({
               width={Math.max(1, step || halfStep * 2)}
               height={PLOT_H}
               fill="var(--gold)"
-              opacity={0.1}
+              opacity={0.08}
             />
           ) : null,
         )}
 
-        {/* y gridlines */}
         {ticks.map((t) => (
           <g key={`t-${t}`}>
-            <line
-              x1={PAD.l}
-              y1={yAt(t)}
-              x2={W - PAD.r}
-              y2={yAt(t)}
-              stroke="var(--border)"
-              strokeWidth="1"
-              opacity={0.5}
-            />
-            <text
-              x={PAD.l - 6}
-              y={yAt(t) + 3}
-              textAnchor="end"
-              className="fill-muted"
-              fontSize="10"
-            >
+            <line x1={PAD.l} y1={yAt(t)} x2={W - PAD.r} y2={yAt(t)} stroke="#1f1f1f" strokeWidth="1" />
+            <text x={PAD.l - 6} y={yAt(t) + 3} textAnchor="end" fill="#52565e" fontSize="10" fontFamily="var(--font-spacemono), monospace">
               {t}
             </text>
           </g>
         ))}
 
-        {/* series lines */}
         {SERIES.filter((s) => visible.has(s.key)).map((s) => (
           <path
             key={s.key}
@@ -255,49 +220,29 @@ export default function TrajectoryChart({
           />
         ))}
 
-        {/* hover guide + dots */}
         {hp && (
           <>
-            <line
-              x1={xAt(hp.i)}
-              y1={PAD.t}
-              x2={xAt(hp.i)}
-              y2={PAD.t + PLOT_H}
-              stroke="var(--foreground)"
-              strokeWidth="1"
-              opacity={0.3}
-            />
+            <line x1={xAt(hp.i)} y1={PAD.t} x2={xAt(hp.i)} y2={PAD.t + PLOT_H} stroke="#f4f5f7" strokeWidth="1" opacity={0.3} />
             {SERIES.filter((s) => visible.has(s.key)).map((s) => {
               const v = hp[s.key];
               if (v === null || v === undefined) return null;
-              return (
-                <circle
-                  key={s.key}
-                  cx={xAt(hp.i)}
-                  cy={yAt(v)}
-                  r="3"
-                  fill={s.color}
-                />
-              );
+              return <circle key={s.key} cx={xAt(hp.i)} cy={yAt(v)} r="3.5" fill={s.color} />;
             })}
           </>
         )}
       </svg>
 
-      {/* hover detail (HTML, below chart for reliable layout) */}
-      <div className="mt-2 min-h-[2.5rem] text-xs">
+      <div className="mt-2 min-h-[22px] text-[12px]">
         {hp ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="font-medium">
+            <span className="font-semibold">
               Match {hp.i + 1}
               {hp.playoff && (
-                <span className="ml-1 rounded bg-gold/15 px-1 text-gold">
-                  playoff
-                </span>
+                <span className="ml-1 rounded bg-gold/15 px-1 text-gold">playoff</span>
               )}
             </span>
-            <span className="text-muted">
-              {hp.eventName ?? hp.eventCode} · {fmtDate(hp.time)}
+            <span className="text-[#6b6f78]">
+              {hp.eventCode} · {fmtDate(hp.time)}
             </span>
             {SERIES.filter((s) => visible.has(s.key)).map((s) => {
               const v = hp[s.key];
@@ -309,9 +254,8 @@ export default function TrajectoryChart({
             })}
           </div>
         ) : (
-          <span className="text-muted">
-            Hover the chart for per-match values. Shaded gold = playoff matches;
-            grey bands group events.
+          <span className="text-[#6b6f78]">
+            Hover the chart for per-match values. Grey bands group events; gold = playoffs.
           </span>
         )}
       </div>

@@ -1,122 +1,225 @@
 import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
-import { getSeasonSnapshot } from "@/lib/ftc/queries";
-import { CURRENT_SEASON, seasonFull } from "@/lib/season";
+import { getSeasonSnapshot, getWorldRecord } from "@/lib/ftc/queries";
+import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
+import { formatDate } from "@/lib/format";
 
 export const revalidate = 3600;
 
-async function SeasonStrip() {
-  let snap: { activeTeamsCount: number; matchesPlayedCount: number } | null =
-    null;
-  try {
-    snap = await getSeasonSnapshot(CURRENT_SEASON);
-  } catch {
-    snap = null;
-  }
-  const items = [
-    { label: "Season", value: seasonFull(CURRENT_SEASON) },
-    {
-      label: "Active teams",
-      value: snap ? snap.activeTeamsCount.toLocaleString() : "—",
-    },
-    {
-      label: "Matches played",
-      value: snap ? snap.matchesPlayedCount.toLocaleString() : "—",
-    },
-  ];
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {items.map((it) => (
-        <div key={it.label} className="card px-4 py-3">
-          <div className="text-xs uppercase tracking-wide text-muted">
-            {it.label}
-          </div>
-          <div className="mt-0.5 text-lg font-semibold">{it.value}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+const SEASON_TITLE = `${seasonName(CURRENT_SEASON)} · ${seasonLabel(CURRENT_SEASON)}`;
 
 const FEATURES = [
   {
     title: "Team profiles",
     body: "EPA and OPR ratings with auto/TeleOp splits, world rankings and a full event history.",
     tag: "Live",
+    rects: [[4, 0], [0, 4], [4, 4], [8, 4], [4, 8]],
   },
   {
     title: "Event dashboards",
     body: "Rankings by OPR, the full match schedule, and red/blue results with winners highlighted.",
     tag: "Live",
+    rects: [[0, 0], [4, 0], [8, 0], [2, 4], [6, 4], [0, 8], [4, 8], [8, 8]],
   },
   {
     title: "Match predictions",
-    body: "OPR-based win probabilities and a Monte-Carlo playoff simulator, à la DepthFTC.",
+    body: "EPA and OPR-based win probabilities and a Monte-Carlo playoff simulator.",
     tag: "Soon",
+    rects: [[0, 6], [3, 3], [6, 0], [3, 8], [8, 5]],
   },
   {
     title: "Alliance compare",
     body: "Stack teams side-by-side to prep alliance selection and scouting strategy.",
     tag: "Soon",
+    rects: [[0, 0], [0, 4], [0, 8], [8, 0], [8, 4], [8, 8]],
   },
 ];
 
+async function StatStrip() {
+  let snap: { activeTeamsCount: number; matchesPlayedCount: number } | null = null;
+  try {
+    snap = await getSeasonSnapshot(CURRENT_SEASON);
+  } catch {
+    snap = null;
+  }
+  const items: [string, string][] = [
+    [SEASON_TITLE, "season"],
+    [snap ? snap.activeTeamsCount.toLocaleString() : "—", "active teams"],
+    [snap ? snap.matchesPlayedCount.toLocaleString() : "—", "matches played"],
+  ];
+  return (
+    <section className="mx-auto mt-16 max-w-[1240px] border-y border-[#161616] px-8 py-[26px]">
+      <div className="flex flex-wrap gap-x-9 gap-y-2 text-[clamp(18px,2vw,23px)] leading-[1.5]">
+        {items.map(([v, l]) => (
+          <span key={l}>
+            <span className="font-semibold text-[#f7f8fa]">{v}</span>{" "}
+            <span className="text-[#6b6f78]">{l}</span>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function WorldRecord() {
+  let wr = null;
+  try {
+    wr = await getWorldRecord(CURRENT_SEASON);
+  } catch {
+    wr = null;
+  }
+  if (!wr) return null;
+  return (
+    <section className="mx-auto mt-16 max-w-[1240px] px-8">
+      <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+        World Record
+      </div>
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[22px] border border-[#2a241a] bg-[#1c1814] md:grid-cols-[1.3fr_1fr]">
+        <div className="bg-[#0a0805] px-[34px] pb-[30px] pt-[34px]">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-gold">
+            <span>✦</span> Highest match score · {SEASON_TITLE}
+          </div>
+          <div className="mt-3.5 flex items-baseline gap-3">
+            <span className="font-display text-[clamp(54px,7vw,86px)] font-semibold leading-none tabular-nums text-gold">
+              {wr.score}
+            </span>
+            <span className="text-[12px] text-[#8a7a52]">points (no-penalty)</span>
+          </div>
+          <div className="mt-[18px] text-[16px] text-[#cfd3da]">
+            {wr.teams.map((t, i) => (
+              <span key={t.number}>
+                {i > 0 && <span className="text-[#5a513a]"> &amp; </span>}
+                <Link
+                  href={`/teams/${t.number}?season=${CURRENT_SEASON}`}
+                  className="text-inherit no-underline hover:text-gold"
+                >
+                  <span className="font-mono text-[13px] text-[#8a7a52]">{t.number}</span>{" "}
+                  {t.name}
+                </Link>
+              </span>
+            ))}
+          </div>
+        </div>
+        <Link
+          href={`/events/${wr.season}/${wr.eventCode}`}
+          className="relative flex flex-col justify-end overflow-hidden bg-gold p-7 no-underline"
+        >
+          <div
+            className="pointer-events-none absolute inset-0 opacity-50"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, rgba(0,0,0,0.32) 1.2px, transparent 1.7px)",
+              backgroundSize: "8px 8px",
+            }}
+          />
+          <div className="relative font-mono text-[14px] uppercase tracking-[0.12em] text-[#5a4410]">
+            Event
+          </div>
+          <div className="relative mt-1.5 font-display text-[22px] font-bold leading-[1.15] text-[#1a1305]">
+            {wr.eventName}
+          </div>
+          <div className="relative mt-2 flex items-center gap-1.5 text-[12px] text-[#5a4410]">
+            {formatDate(wr.eventStart)} <span>→</span>
+          </div>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   return (
-    <div className="space-y-10">
-      <section className="pt-6 text-center">
-        <span className="inline-block rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
-          Powered by the FTCScout API
-        </span>
-        <h1 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-bold tracking-tight sm:text-5xl">
-          All your FTC scouting,{" "}
-          <span className="brand-gradient">one dashboard.</span>
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-balance text-muted">
-          Search any FIRST Tech Challenge team or event to see OPR, rankings,
-          and match results — the stats from ftcscout, depthftc and statcube,
-          unified.
-        </p>
-        <div className="mx-auto mt-6 max-w-md">
-          <SearchBar autoFocus />
+    <div>
+      {/* Hero */}
+      <section className="relative mx-auto max-w-[1240px] overflow-hidden px-8 pb-7 pt-24 text-center">
+        <div
+          className="hero-dots pointer-events-none absolute inset-0 z-0 opacity-[0.55]"
+          style={{
+            WebkitMaskImage:
+              "radial-gradient(560px 360px at 50% 6%, #000 0%, transparent 72%)",
+            maskImage:
+              "radial-gradient(560px 360px at 50% 6%, #000 0%, transparent 72%)",
+          }}
+        />
+        <div className="relative z-[1]">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#232323] bg-[#0a0a0a] px-4 py-[7px] font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal" />
+            Powered by the FTCScout API
+          </span>
+          <h1 className="font-display mx-auto mt-[30px] max-w-[900px] text-balance text-[clamp(42px,6.2vw,80px)] font-medium leading-[1.04] tracking-[-0.01em] text-[#f7f8fa]">
+            All your FTC scouting,
+            <br />
+            <span className="italic text-accent">one dashboard.</span>
+          </h1>
+          <p className="mx-auto mt-6 max-w-[560px] text-balance text-[18px] leading-[1.55] text-muted">
+            Search any FIRST Tech Challenge team or event to see EPA, OPR,
+            rankings, and match results.
+          </p>
+          <div className="mx-auto mt-[34px] max-w-[520px]">
+            <SearchBar size="lg" />
+          </div>
+          <p className="mt-[18px] text-[13px] text-[#6b6f78]">
+            Try{" "}
+            <Link href="/teams/641" className="text-accent no-underline hover:underline">
+              team 641
+            </Link>
+            , search an event, or browse the{" "}
+            <Link href="/rankings" className="text-accent no-underline hover:underline">
+              full rankings
+            </Link>
+            .
+          </p>
         </div>
-        <p className="mt-3 text-xs text-muted">
-          Try{" "}
-          <Link href="/teams/14584" className="text-accent hover:underline">
-            team 14584
-          </Link>
-          , search an event, or browse the{" "}
-          <Link href="/rankings" className="text-accent hover:underline">
-            full rankings
-          </Link>
-          .
-        </p>
       </section>
 
-      <SeasonStrip />
+      <StatStrip />
+      <WorldRecord />
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          What&apos;s inside
-        </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="card p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">{f.title}</h3>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    f.tag === "Live"
-                      ? "bg-accent-2/15 text-accent-2"
-                      : "bg-surface-2 text-muted"
-                  }`}
-                >
-                  {f.tag}
-                </span>
+      {/* What's inside — light section */}
+      <section className="mt-[88px] bg-[#eceef0] px-8 pb-[88px] pt-20 text-[#0a0a0a]">
+        <div className="mx-auto max-w-[1240px]">
+          <div className="mb-9 flex flex-wrap items-end justify-between gap-6">
+            <h2 className="font-display m-0 max-w-[640px] text-balance text-[clamp(32px,4vw,50px)] font-medium leading-[1.06] tracking-[-0.01em]">
+              Everything you need to scout, in one place
+            </h2>
+            <span className="pb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[#52565e]">
+              What&apos;s inside
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className="flex flex-col rounded-[20px] bg-white px-[30px] pb-7 pt-[30px]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <svg width="34" height="34" viewBox="0 0 10 10" className="shrink-0">
+                      {f.rects.map(([x, y], i) => (
+                        <rect key={i} x={x} y={y} width="2" height="2" fill="#0a0a0a" />
+                      ))}
+                    </svg>
+                    <h3 className="font-display m-0 text-[23px] font-semibold">
+                      {f.title}
+                    </h3>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-full px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.08em]"
+                    style={
+                      f.tag === "Live"
+                        ? { background: "#0a0a0a", color: "#fff" }
+                        : { background: "#d7dade", color: "#52565e" }
+                    }
+                  >
+                    {f.tag}
+                  </span>
+                </div>
+                <p className="mt-[18px] text-[16px] leading-[1.55] text-[#52565e]">
+                  {f.body}
+                </p>
               </div>
-              <p className="mt-1.5 text-sm text-muted">{f.body}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
     </div>

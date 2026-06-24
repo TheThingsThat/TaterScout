@@ -31,6 +31,73 @@ export async function getSeasonSnapshot(
   return gql(query, { season }, 3600);
 }
 
+export interface WorldRecord {
+  season: number;
+  eventCode: string;
+  eventName: string;
+  eventStart: string;
+  alliance: "Red" | "Blue";
+  score: number; // no-penalty total
+  scoreWithPenalties: number;
+  teams: { number: number; name: string }[];
+}
+
+export async function getWorldRecord(
+  season: number,
+): Promise<WorldRecord | null> {
+  if (!seasonHasSimpleScores(season)) return null;
+  const query = `
+    query WR($season: Int!) {
+      tradWorldRecord(season: $season) {
+        season
+        eventCode
+        event { name start }
+        teams { teamNumber alliance station team { name } }
+        scores { ... on MatchScores${season} {
+          red { totalPoints totalPointsNp }
+          blue { totalPoints totalPointsNp }
+        } }
+      }
+    }
+  `;
+  const data = await gql<{
+    tradWorldRecord: {
+      season: number;
+      eventCode: string;
+      event: { name: string; start: string };
+      teams: {
+        teamNumber: number;
+        alliance: "Red" | "Blue";
+        station: string;
+        team: { name: string };
+      }[];
+      scores: {
+        red: { totalPoints: number; totalPointsNp: number } | null;
+        blue: { totalPoints: number; totalPointsNp: number } | null;
+      } | null;
+    } | null;
+  }>(query, { season }, 3600);
+
+  const m = data.tradWorldRecord;
+  if (!m || !m.scores?.red || !m.scores?.blue) return null;
+  const alliance: "Red" | "Blue" =
+    m.scores.red.totalPointsNp >= m.scores.blue.totalPointsNp ? "Red" : "Blue";
+  const side = alliance === "Red" ? m.scores.red : m.scores.blue;
+  const teams = m.teams
+    .filter((t) => t.alliance === alliance && t.station !== "NotOnField")
+    .map((t) => ({ number: t.teamNumber, name: t.team.name }));
+  return {
+    season: m.season,
+    eventCode: m.eventCode,
+    eventName: m.event.name,
+    eventStart: m.event.start,
+    alliance,
+    score: side.totalPointsNp,
+    scoreWithPenalties: side.totalPoints,
+    teams,
+  };
+}
+
 export async function getTeam(
   number: number,
   season: number,

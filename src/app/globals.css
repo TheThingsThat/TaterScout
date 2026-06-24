@@ -1,17 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07090f;
-  --surface: #0d111b;
-  --surface-2: #131826;
-  --border: #1e2638;
-  --foreground: #e7ebf3;
-  --muted: #8b94a7;
-  --accent: #7c5cff;
-  --accent-2: #21d4c4;
-  --red: #ff5d6c;
-  --blue: #4d8dff;
-  --gold: #ffc857;
+  --background: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #161616;
+  --surface-input: #0c0c0c;
+  --border: #1a1a1a;
+  --border-2: #232323;
+  --divider: #141414;
+  --foreground: #f4f5f7;
+  --heading: #f7f8fa;
+  --muted: #9aa0aa;
+  --muted-2: #6b6f78;
+  --faint: #52565e;
+
+  --accent: #cd0e0e; /* brand red */
+  --accent-2: #2f8bff; /* = EPA blue (legacy alias used by some components) */
+  --epa: #2f8bff;
+  --opr: #3ecf76;
+  --gold: #ffc24b;
+  --teal: #36d6c2;
+  --red: #ff5d6c; /* match winner red */
+  --blue: #4d8dff; /* match winner blue */
 }
 
 @theme inline {
@@ -23,35 +33,69 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
+  --color-epa: var(--epa);
+  --color-opr: var(--opr);
+  --color-gold: var(--gold);
+  --color-teal: var(--teal);
   --color-red: var(--red);
   --color-blue: var(--blue);
-  --color-gold: var(--gold);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --font-sans: var(--font-grotesk);
+  --font-mono: var(--font-spacemono);
 }
 
 body {
-  background:
-    radial-gradient(900px 500px at 85% -10%, rgba(124, 92, 255, 0.12), transparent),
-    radial-gradient(800px 500px at 0% 0%, rgba(33, 212, 196, 0.08), transparent),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-grotesk), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-.brand-gradient {
-  background: linear-gradient(100deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Serif display face — used for editorial headings (landing). */
+.font-display {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: 16px;
 }
 
-/* thin scrollbar for tables */
-.scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+/* Small mono section label used throughout the app. */
+.eyebrow {
+  font-family: var(--font-spacemono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* thin scrollbar for tables / dropdowns */
+.ts-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.ts-scroll::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 8px;
+}
+
+/* dotted texture used behind the hero and the 404 */
+.hero-dots {
+  background-image: radial-gradient(
+    circle,
+    rgba(205, 14, 14, 0.5) 1.1px,
+    transparent 1.6px
+  );
+  background-size: 9px 9px;
+}
+
+select {
+  appearance: none;
+}
