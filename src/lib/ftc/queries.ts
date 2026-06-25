@@ -190,6 +190,37 @@ export async function searchEvents(
   return data.eventsSearch ?? [];
 }
 
+/** Teams + events in ONE request (one round-trip). FTCScout ignores `limit`, so
+ *  cap on the consumer side. Cached aggressively — search data is near-static. */
+export async function searchAll(
+  searchText: string,
+  season: number,
+): Promise<{ teams: TeamSearchResult[]; events: EventSearchResult[] }> {
+  if (!searchText.trim()) return { teams: [], events: [] };
+  const query = `
+    query SearchAll($q: String!, $s: Int!) {
+      teamsSearch(searchText: $q) {
+        number
+        name
+        location { city state country }
+      }
+      eventsSearch(searchText: $q, season: $s) {
+        code
+        season
+        name
+        start
+        type
+        location { city state country }
+      }
+    }
+  `;
+  const data = await gql<{
+    teamsSearch: TeamSearchResult[];
+    eventsSearch: EventSearchResult[];
+  }>(query, { q: searchText, s: season }, 600);
+  return { teams: data.teamsSearch ?? [], events: data.eventsSearch ?? [] };
+}
+
 export async function getEvent(
   season: number,
   code: string,
@@ -201,9 +232,10 @@ export async function getEvent(
        } }`
     : "";
 
-  // Per-event OPR straight from FTCScout (authoritative; quals-only, no-penalty).
+  // Per-event OPR + quals rank straight from FTCScout (rank seeds alliance numbering).
   const eventStats = seasonHasSimpleScores(season)
     ? `stats { ... on TeamEventStats${season} {
+         rank
          opr { totalPointsNp autoPoints dcPoints }
        } }`
     : "";
@@ -225,6 +257,8 @@ export async function getEvent(
         divisionCode
         relatedEvents { code divisionCode type }
         website
+        liveStreamURL
+        awards { type placement teamNumber }
         location { city state country }
         teams {
           teamNumber

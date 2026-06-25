@@ -25,6 +25,18 @@ type Flat = {
   secondary: string;
 };
 
+// Session result cache (keyed by season:term) so repeat / backspaced searches are
+// instant instead of re-hitting the API. Small LRU-ish cap.
+const RESULT_CACHE = new Map<string, Flat[]>();
+const CACHE_MAX = 80;
+function cachePut(key: string, value: Flat[]) {
+  RESULT_CACHE.delete(key);
+  RESULT_CACHE.set(key, value);
+  if (RESULT_CACHE.size > CACHE_MAX) {
+    RESULT_CACHE.delete(RESULT_CACHE.keys().next().value!);
+  }
+}
+
 export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -39,6 +51,15 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
     const term = q.trim();
     if (term.length < 2) {
       setHits([]);
+      setLoading(false);
+      return;
+    }
+    // Instant from cache (repeat / backspaced searches) — no fetch, no spinner.
+    const key = `${CURRENT_SEASON}:${term.toLowerCase()}`;
+    const cached = RESULT_CACHE.get(key);
+    if (cached) {
+      setHits(cached);
+      setActive(0);
       setLoading(false);
       return;
     }
@@ -67,6 +88,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
             secondary: locationStr(e.location),
           })),
         ];
+        cachePut(key, flat);
         setHits(flat);
         setActive(0);
       } catch {
@@ -95,13 +117,23 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
     router.push(href);
   }
 
+  // A numeric query gets an instant "Team N" result at the top (no API wait).
+  const term = q.trim();
+  const numericHref = /^\d{1,6}$/.test(term) ? `/teams/${term}` : null;
+  const results: Flat[] = numericHref
+    ? [
+        { kind: "team", href: numericHref, primary: `Team ${term}`, secondary: "Go to team →" },
+        ...hits.filter((h) => h.href !== numericHref),
+      ]
+    : hits;
+
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") {
-      if (hits[active]) go(hits[active].href);
-      else if (/^\d{1,6}$/.test(q.trim())) go(`/teams/${q.trim()}`);
+      if (results[active]) go(results[active].href);
+      else if (numericHref) go(numericHref);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((a) => Math.min(a + 1, hits.length - 1));
+      setActive((a) => Math.min(a + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActive((a) => Math.max(a - 1, 0));
@@ -110,7 +142,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
     }
   }
 
-  const showDrop = open && q.trim().length >= 2;
+  const showDrop = open && term.length >= 2;
   const lg = size === "lg";
 
   return (
@@ -154,11 +186,11 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
           className="ts-scroll absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-[18px] border border-[#232323] bg-[#0a0a0a] text-left shadow-[0_24px_60px_rgba(0,0,0,0.7)]"
           style={{ maxHeight: 360, overflowY: "auto" }}
         >
-          {hits.length === 0 && !loading ? (
+          {results.length === 0 && !loading ? (
             <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">No results.</div>
           ) : (
             <ul className="py-0">
-              {hits.map((h, i) => (
+              {results.map((h, i) => (
                 <li key={h.href}>
                   <button
                     onMouseEnter={() => setActive(i)}

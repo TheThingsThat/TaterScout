@@ -294,17 +294,26 @@ export default async function TeamPage({ params, searchParams }: Props) {
           <h2 className={`mb-3.5 ${HEADING}`}>Awards ({team.awards.length})</h2>
           <div className="flex flex-wrap gap-2.5">
             {team.awards.map((a, i) => (
-              <span
+              <div
                 key={`${a.type}-${a.eventCode}-${i}`}
-                className="rounded-[10px] px-3.5 py-2 text-[14px] text-gold"
+                className="rounded-[10px] px-3.5 py-2.5 text-gold"
                 style={{
                   border: "1px solid rgba(255,194,75,0.3)",
                   background: "rgba(255,194,75,0.08)",
                 }}
               >
-                {awardLabel(a.type)}
-                {a.placement > 0 ? ` #${a.placement}` : ""}
-              </span>
+                <div className="text-[14px] font-medium">
+                  {awardLabel(a.type)}
+                  {a.placement > 0 ? ` #${a.placement}` : ""}
+                </div>
+                <Link
+                  href={`/events/${season}/${a.eventCode}`}
+                  className="mt-0.5 block max-w-[220px] truncate text-[12px] text-[#b89a52] no-underline hover:text-gold"
+                  title={a.event?.name ?? a.eventCode}
+                >
+                  {a.event?.name ?? a.eventCode}
+                </Link>
+              </div>
             ))}
           </div>
         </section>

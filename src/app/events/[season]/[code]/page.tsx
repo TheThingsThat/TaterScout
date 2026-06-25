@@ -12,6 +12,9 @@ import LiveRefresh from "@/components/LiveRefresh";
 import EventPredictions from "@/components/EventPredictions";
 import PredictScheduleToggle from "@/components/PredictScheduleToggle";
 import EventSos from "@/components/EventSos";
+import EventResults, { type ResultTeam } from "@/components/EventResults";
+import Collapsible from "@/components/Collapsible";
+import { deriveAllianceNumbers } from "@/lib/ftc/alliances";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import { simulateEvent, type SimTeam } from "@/lib/predict/simulate";
 import { computeSos } from "@/lib/predict/sos";
@@ -146,6 +149,28 @@ export default async function EventPage({ params, searchParams }: Props) {
     ? computeSos({ teams: teamNums, epaOf: (i) => postEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
     : null;
 
+  // --- Playoff alliance numbers (derived) for the match list ---
+  const rankOf = new Map<number, number>();
+  for (const t of ev.teams) {
+    if (t.stats?.rank != null) rankOf.set(t.teamNumber, t.stats.rank);
+  }
+  const allianceOf = deriveAllianceNumbers(ev.matches, rankOf);
+
+  // --- Results (from event awards): winning/finalist alliance + Inspire ---
+  const nameOf = new Map(ev.teams.map((t) => [t.teamNumber, t.team.name]));
+  const teamList = (type: string): ResultTeam[] =>
+    ev.awards
+      .filter((a) => a.type === type && a.teamNumber != null)
+      .sort((a, b) => a.placement - b.placement)
+      .map((a) => ({ number: a.teamNumber!, name: nameOf.get(a.teamNumber!) ?? `Team ${a.teamNumber}` }));
+  const winnerTeams = teamList("Winner");
+  const finalistTeams = teamList("Finalist");
+  const inspireAward = ev.awards.find((a) => a.type === "Inspire" && a.placement === 1 && a.teamNumber != null);
+  const inspireTeam: ResultTeam | null = inspireAward
+    ? { number: inspireAward.teamNumber!, name: nameOf.get(inspireAward.teamNumber!) ?? `Team ${inspireAward.teamNumber}` }
+    : null;
+  const hasResults = winnerTeams.length > 0 || finalistTeams.length > 0 || inspireTeam !== null;
+
   // Predicted start times for unplayed qualification matches (TBA-style).
   const qualSched: SchedMatch[] = ev.matches
     .filter((m) => m.tournamentLevel === "Quals")
@@ -196,6 +221,16 @@ export default async function EventPage({ params, searchParams }: Props) {
                 Website ↗
               </a>
             )}
+            {ev.liveStreamURL && (
+              <a
+                href={ev.liveStreamURL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-[10px] border border-accent/40 bg-accent/[0.08] px-3.5 py-2 text-[13px] text-accent no-underline transition-colors hover:bg-accent/[0.14]"
+              >
+                ▶ Livestream
+              </a>
+            )}
             <a
               href={`https://ftcscout.org/events/${season}/${ev.code}`}
               target="_blank"
@@ -221,32 +256,36 @@ export default async function EventPage({ params, searchParams }: Props) {
       </div>
 
       {simResult && (
-        <section>
-          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-baseline gap-2.5">
-              <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+        <Collapsible
+          defaultOpen={false}
+          header={
+            <span className="flex items-baseline gap-2.5">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                 Predictions
-              </h2>
-              <span className="text-[11px] text-[#6b6f78]">
-                win odds, seeds &amp; playoffs
               </span>
-            </div>
-            <PredictScheduleToggle value={mode} realAvailable={realAvailable} />
-          </div>
+              <span className="text-[11px] text-[#6b6f78]">win odds, seeds &amp; playoffs</span>
+            </span>
+          }
+          right={<PredictScheduleToggle value={mode} realAvailable={realAvailable} />}
+        >
           <EventPredictions result={simResult} season={season} />
-        </section>
+        </Collapsible>
       )}
 
       {sosPre && sosPost && sosPre.teams.length > 0 && (
-        <section>
-          <div className="mb-3.5 flex items-baseline gap-2.5">
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-              Strength of Schedule
-            </h2>
-            <span className="text-[11px] text-[#6b6f78]">how lucky was the draw</span>
-          </div>
+        <Collapsible
+          defaultOpen={false}
+          header={
+            <span className="flex items-baseline gap-2.5">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+                Strength of Schedule
+              </span>
+              <span className="text-[11px] text-[#6b6f78]">how lucky was the draw</span>
+            </span>
+          }
+        >
           <EventSos pre={sosPre} post={sosPost} season={season} />
-        </section>
+        </Collapsible>
       )}
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
@@ -261,15 +300,29 @@ export default async function EventPage({ params, searchParams }: Props) {
           )}
         </section>
 
-        <section>
-          <h2 className={HEADING}>Matches</h2>
-          <MatchList
-            matches={ev.matches}
-            season={season}
-            predictions={predicted}
-            winProbs={winProbs}
-            timezone={ev.timezone}
-          />
+        <section className="space-y-6">
+          {hasResults && (
+            <div>
+              <h2 className={HEADING}>Results</h2>
+              <EventResults
+                winner={winnerTeams}
+                finalist={finalistTeams}
+                inspire={inspireTeam}
+                season={season}
+              />
+            </div>
+          )}
+          <div>
+            <h2 className={HEADING}>Matches</h2>
+            <MatchList
+              matches={ev.matches}
+              season={season}
+              predictions={predicted}
+              winProbs={winProbs}
+              timezone={ev.timezone}
+              allianceOf={allianceOf}
+            />
+          </div>
         </section>
       </div>
     </div>

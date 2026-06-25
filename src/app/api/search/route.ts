@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchTeams, searchEvents } from "@/lib/ftc/queries";
+import { searchAll } from "@/lib/ftc/queries";
 import { CURRENT_SEASON } from "@/lib/season";
 
 export async function GET(req: NextRequest) {
@@ -11,14 +11,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ teams: [], events: [] });
   }
 
-  const [teams, events] = await Promise.all([
-    searchTeams(q, 25).catch(() => []),
-    searchEvents(q, season, 25).catch(() => []),
-  ]);
+  // One round-trip for both; FTCScout ignores `limit`, so cap here for a tidy
+  // dropdown. The underlying gql is cached ~10 min; let clients/CDN cache too.
+  const { teams, events } = await searchAll(q, season).catch(() => ({
+    teams: [],
+    events: [],
+  }));
 
-  // The FTCScout API doesn't reliably honor `limit`, so cap here for a tidy dropdown.
-  return NextResponse.json({
-    teams: teams.slice(0, 6),
-    events: events.slice(0, 6),
-  });
+  return NextResponse.json(
+    { teams: teams.slice(0, 6), events: events.slice(0, 6) },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+      },
+    },
+  );
 }

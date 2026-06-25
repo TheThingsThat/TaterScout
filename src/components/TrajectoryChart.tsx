@@ -193,19 +193,24 @@ export default function TrajectoryChart({
           );
         })}
 
-        {points.map((p, i) =>
-          p.playoff ? (
+        {points.map((p, i) => {
+          if (!p.playoff) return null;
+          // Clamp to the plot area so a trailing playoff point doesn't render a
+          // sliver past the right edge.
+          const left = Math.max(PAD.l, xAt(i) - halfStep);
+          const right = Math.min(W - PAD.r, xAt(i) + halfStep);
+          return (
             <rect
               key={`po-${i}`}
-              x={xAt(i) - halfStep}
+              x={left}
               y={PAD.t}
-              width={Math.max(1, step || halfStep * 2)}
+              width={Math.max(1, right - left)}
               height={PLOT_H}
               fill="var(--gold)"
               opacity={0.08}
             />
-          ) : null,
-        )}
+          );
+        })}
 
         {ticks.map((t) => (
           <g key={`t-${t}`}>

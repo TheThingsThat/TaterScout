@@ -24,6 +24,7 @@ export interface AwardLite {
   type: string;
   placement: number;
   eventCode: string;
+  event: { name: string } | null;
 }
 
 export interface TeamEventLite {
@@ -113,7 +114,13 @@ export interface EventTeam {
     quickStats: QuickStats | null;
   };
   // FTCScout's per-event stats (event-scoped, not season).
-  stats: { opr: EventOpr | null } | null;
+  stats: { rank: number | null; opr: EventOpr | null } | null;
+}
+
+export interface EventAward {
+  type: string;
+  placement: number;
+  teamNumber: number | null;
 }
 
 export interface EventDetail {
@@ -132,6 +139,8 @@ export interface EventDetail {
   relatedEvents: { code: string; divisionCode: string | null; type: string }[];
   location: Location;
   website: string | null;
+  liveStreamURL: string | null;
+  awards: EventAward[];
   teams: EventTeam[];
   matches: Match[];
 }
