@@ -13,6 +13,7 @@ import EventPredictions from "@/components/EventPredictions";
 import PredictScheduleToggle from "@/components/PredictScheduleToggle";
 import EventSos from "@/components/EventSos";
 import EventResults, { type ResultTeam } from "@/components/EventResults";
+import EventPredictionAccuracy from "@/components/EventPredictionAccuracy";
 import Collapsible from "@/components/Collapsible";
 import { deriveAllianceNumbers } from "@/lib/ftc/alliances";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
@@ -140,6 +141,27 @@ export default async function EventPage({ params, searchParams }: Props) {
     winProbs.set(matchKey(m), winProb(rE, bE, model.marginSd));
   }
 
+  // --- Prediction accuracy: how well the pre-event-EPA win predictions did on
+  //     matches already PLAYED (a no-lookahead backtest; live tracker mid-event) ---
+  let accCorrect = 0;
+  let accTotal = 0;
+  for (const m of ev.matches) {
+    if (!m.hasBeenPlayed) continue;
+    const red = m.teams.filter((t) => t.alliance === "Red");
+    const blue = m.teams.filter((t) => t.alliance === "Blue");
+    const rs = m.scores?.red?.totalPoints;
+    const bs = m.scores?.blue?.totalPoints;
+    if (!red.length || !blue.length || rs == null || bs == null) continue;
+    const rE = red.reduce((s, t) => s + preEpaOf(t.teamNumber), 0);
+    const bE = blue.reduce((s, t) => s + preEpaOf(t.teamNumber), 0);
+    if (rE === 0 && bE === 0) continue;
+    const pRed = winProb(rE, bE, model.marginSd);
+    if (rs === bs || pRed === 0.5) continue; // skip ties / coin-flips
+    accTotal += 1;
+    if ((pRed > 0.5 && rs > bs) || (pRed < 0.5 && bs > rs)) accCorrect += 1;
+  }
+  const showAccuracy = accTotal >= 4;
+
   // --- Strength of schedule (Statbotics-style; needs a released real schedule) ---
   const canSos = realAvailable && teamNums.length >= 6;
   const sosPre = canSos
@@ -254,6 +276,24 @@ export default async function EventPage({ params, searchParams }: Props) {
           </div>
         </div>
       </div>
+
+      {showAccuracy && (
+        <section>
+          <div className="mb-3.5 flex items-baseline gap-2.5">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+              Prediction accuracy
+            </h2>
+            <span className="text-[11px] text-[#6b6f78]">
+              win calls vs results{ev.ongoing ? " · live" : ""}
+            </span>
+          </div>
+          <EventPredictionAccuracy
+            correct={accCorrect}
+            total={accTotal}
+            ongoing={ev.ongoing}
+          />
+        </section>
+      )}
 
       {simResult && (
         <Collapsible
