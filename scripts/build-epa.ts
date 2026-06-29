@@ -8,21 +8,21 @@
  * The raw crawl is cached at /tmp so a recompute skips the (rate-limited) crawl;
  * pass --refetch to force a fresh crawl.
  */
-import { existsSync, readFileSync } from "node:fs";
 import { fetchAllEvents } from "../src/lib/data/crawl.ts";
 import { computeSeasonData } from "../src/lib/data/compute.ts";
-import { applyComputed, persist, rawPath } from "../src/lib/data/store.ts";
+import { applyComputed, persist, getRawEvents } from "../src/lib/data/store.ts";
 import type { RawEvent } from "../src/lib/data/types.ts";
 
 const SEASON = Number(process.argv[2]) || 2025;
 const REFETCH = process.argv.includes("--refetch");
 
 async function main() {
-  const cachePath = rawPath(SEASON);
-  let events: RawEvent[];
-  if (!REFETCH && existsSync(cachePath)) {
-    console.log(`[build] using cached raw ${cachePath}`);
-    events = JSON.parse(readFileSync(cachePath, "utf8")) as RawEvent[];
+  // Reuse the cached raw crawl unless --refetch. (Writes go to the same backend
+  // the app reads — local files by default, Vercel Blob if BLOB_READ_WRITE_TOKEN
+  // is set, which is how you seed the production store.)
+  let events: RawEvent[] | null = REFETCH ? null : await getRawEvents(SEASON);
+  if (events) {
+    console.log(`[build] using cached raw (${events.length} events)`);
   } else {
     console.log(`[build] crawling season ${SEASON}…`);
     const t0 = Date.now();
@@ -37,7 +37,7 @@ async function main() {
   console.log(`[build] computing over ${matchCount} matches…`);
   const computed = computeSeasonData(SEASON, events);
   applyComputed(SEASON, events, computed);
-  persist(SEASON);
+  await persist(SEASON);
 
   const rk = computed.rankings;
   console.log(

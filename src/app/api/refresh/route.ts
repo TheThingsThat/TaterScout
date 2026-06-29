@@ -21,7 +21,7 @@ export async function POST() {
   const t0 = Date.now();
   try {
     // Working copy of the ingested events; seed via a full crawl if none exists.
-    let raw = getRawEvents(SEASON);
+    let raw = await getRawEvents(SEASON);
     if (!raw) raw = await fetchAllEvents(SEASON);
 
     const delta = await fetchDeltas(SEASON, raw);
@@ -39,7 +39,7 @@ export async function POST() {
     // Recompute (EPA is global; OPR/sim-model/snapshots all derive from the set).
     const computed = computeSeasonData(SEASON, delta.events);
     applyComputed(SEASON, delta.events, computed);
-    persist(SEASON);
+    await persist(SEASON);
 
     return NextResponse.json({
       changed: true,

@@ -7,6 +7,7 @@ import { eventTypeLabel, eventTypeWeight, awardLabel } from "@/lib/ftc/labels";
 import { formatDate, formatClock, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getTrajectory } from "@/lib/trajectory";
+import { ensureLoaded } from "@/lib/data/store";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
 import EpaTiles from "@/components/EpaTiles";
@@ -101,6 +102,8 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const season = parseSeason((await searchParams).season);
   const num = Number(number);
   if (!Number.isInteger(num)) notFound();
+
+  await ensureLoaded(season); // hydrate the data store before sync accessors
 
   const team = await getTeam(num, season);
   if (!team) notFound();

@@ -9,6 +9,7 @@ import {
 } from "@/lib/rankings";
 import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
 import { fmt } from "@/lib/format";
+import { ensureLoaded } from "@/lib/data/store";
 import RegionSelect from "@/components/RegionSelect";
 
 export const metadata: Metadata = {
@@ -45,6 +46,8 @@ export default async function RankingsPage({ searchParams }: Props) {
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const region = sp.region ?? "";
   const page = Math.max(1, Number(sp.page) || 1);
+
+  await ensureLoaded(CURRENT_SEASON); // hydrate the data store before sync accessors
 
   const regions = getRegions(CURRENT_SEASON);
   const { rows, total, page: curPage, pages } = queryRankings(CURRENT_SEASON, {

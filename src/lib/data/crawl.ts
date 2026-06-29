@@ -6,7 +6,9 @@ const ENDPOINT = "https://api.ftcscout.org/graphql";
 const CONCURRENCY = 10;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Plain fetch + 429 backoff; `no-store` so a refresh always sees fresh data. */
+/** Plain fetch + 429 backoff + per-request timeout (so a stalled/throttled
+ *  connection fails fast instead of hanging for minutes); `no-store` so a
+ *  refresh always sees fresh data. */
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
@@ -15,6 +17,7 @@ async function gql<T>(query: string, variables: Record<string, unknown>): Promis
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, variables }),
         cache: "no-store",
+        signal: AbortSignal.timeout(15000),
       });
       if (res.status === 429) {
         await sleep(1000 * (attempt + 1));

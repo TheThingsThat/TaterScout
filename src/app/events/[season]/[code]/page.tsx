@@ -5,6 +5,7 @@ import { seasonFull } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
 import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
+import { ensureLoaded } from "@/lib/data/store";
 import { formatDate, locationStr } from "@/lib/format";
 import EventRankings from "@/components/EventRankings";
 import MatchList, { matchKey } from "@/components/MatchList";
@@ -61,6 +62,8 @@ export default async function EventPage({ params, searchParams }: Props) {
   const { season: seasonStr, code } = await params;
   const season = Number(seasonStr);
   if (!Number.isInteger(season)) notFound();
+
+  await ensureLoaded(season); // hydrate the data store (Blob/file) before sync accessors
 
   const ev = await getEvent(season, code);
   if (!ev) notFound();
