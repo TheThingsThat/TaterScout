@@ -15,6 +15,15 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   Premier: "Premier",
 };
 
+/** FIRST gives a spaced `typeName` ("FIRST Championship", "League Meet"); the
+ *  label/weight maps below key on the compact PascalCase form. Strip separators
+ *  so "FIRST Championship" → "FIRSTChampionship", "League Meet" → "LeagueMeet". */
+export function normalizeEventType(typeName: string | null | undefined): string {
+  if (!typeName) return "Other";
+  const key = typeName.replace(/[^a-zA-Z0-9]/g, "");
+  return key || "Other";
+}
+
 export function eventTypeLabel(type: string): string {
   return EVENT_TYPE_LABEL[type] ?? type;
 }

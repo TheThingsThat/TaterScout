@@ -144,7 +144,7 @@ export default function Home() {
         <div className="relative z-[1]">
           <span className="inline-flex items-center gap-2 rounded-full border border-[#232323] bg-[#0a0a0a] px-4 py-[7px] font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal" />
-            Powered by the FTCScout API
+            Powered by the official FIRST API
           </span>
           <h1 className="font-display mx-auto mt-[30px] max-w-[900px] text-balance text-[clamp(42px,6.2vw,80px)] font-medium leading-[1.04] tracking-[-0.01em] text-[#f7f8fa]">
             All your FTC scouting,

@@ -31,16 +31,17 @@ export default function AboutPage() {
 
       <div className="mt-[34px] grid gap-4">
         <Card title="Where the data comes from">
-          All data is fetched live from the public{" "}
+          All data comes straight from the official{" "}
           <a
-            href="https://ftcscout.org/api"
+            href="https://frc-events.firstinspires.org/services/API"
             target="_blank"
             rel="noreferrer"
             className="text-accent no-underline hover:underline"
           >
-            FTCScout API
+            FIRST Tech Challenge Events API
           </a>
-          . No login required.
+          . Matches, scores, rankings, alliances and awards are ingested from
+          FIRST; EPA and OPR are computed by TaterScout.
         </Card>
 
         <Card title="OPR — Offensive Power Rating">
@@ -48,11 +49,11 @@ export default function AboutPage() {
           how many points a team contributes to its alliance, solved over
           qualification matches and split into{" "}
           <strong className={STRONG}>Auto</strong> (autonomous) and{" "}
-          <strong className={STRONG}>TeleOp</strong> (driver-controlled). We use
-          FTCScout&apos;s official OPR: the team&apos;s best single-event value on
-          the world rankings leaderboard, and the exact per-event value on each
-          event page. The trajectory chart additionally computes OPR after every
-          match.
+          <strong className={STRONG}>TeleOp</strong> (driver-controlled).
+          TaterScout solves OPR from the raw FIRST match scores: the world
+          rankings leaderboard uses each team&apos;s best single-event value,
+          each event page shows that event&apos;s value, and the trajectory chart
+          computes OPR after every match.
         </Card>
 
         <Card title="EPA — Expected Points Added">
@@ -101,8 +102,8 @@ export default function AboutPage() {
 
         <Card title="Live data">
           The <strong className={STRONG}>↻ refresh</strong> button in the header
-          pulls the latest results straight from FTCScout. It only fetches the
-          events that changed since the last sync and recomputes the affected
+          pulls the latest results straight from the FIRST API. It only fetches
+          the events that changed since the last sync and recomputes the affected
           ratings — so a match that just finished shows up in seconds.
         </Card>
 

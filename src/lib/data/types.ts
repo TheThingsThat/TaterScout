@@ -24,12 +24,14 @@ export interface RawEvent {
   code: string;
   name: string | null;
   start: string | null;
-  region: string | null;
   type: string; // event type (LeagueMeet/Qualifier/Championship…) — for cycle priors
-  updatedAt: string | null; // FTCScout Event.updatedAt — the change watermark
+  updatedAt: string | null; // max match modifiedOn — change signal
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   matches: RawMatch[];
-  // opr = FTCScout per-event OPR [totalPointsNp, autoPoints, dcPoints] (null if none).
-  teams: { num: number; name: string; opr: [number, number, number] | null }[];
+  // Teams that appeared at the event; region = the team's FIRST homeRegion.
+  teams: { num: number; name: string; region: string | null }[];
 }
 
 // --- Computed file shapes (the JSON the app reads) ---
@@ -57,6 +59,26 @@ export interface TeamRow {
   rkEpaTele: number | null;
 }
 
+// Highest no-penalty match score of the season (home-page "world record").
+export interface WorldRecordData {
+  eventCode: string;
+  eventName: string | null;
+  eventStart: string | null;
+  score: number; // no-penalty alliance total
+  teams: { number: number; name: string }[];
+}
+
+// Lightweight event row for the local search index (FIRST has no fuzzy search).
+export interface EventIndexRow {
+  code: string;
+  name: string | null;
+  start: string | null;
+  type: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+}
+
 export interface RankingsFile {
   season: number;
   computedAt: string;
@@ -66,6 +88,8 @@ export interface RankingsFile {
   cyclePriors?: CyclePriors;
   simModel?: SimModel;
   teams: Record<string, TeamRow>;
+  worldRecord?: WorldRecordData | null;
+  events?: EventIndexRow[];
 }
 
 // [tMinutes, eventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, matchNum?, series?]

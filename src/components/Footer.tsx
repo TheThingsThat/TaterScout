@@ -8,14 +8,14 @@ export default function Footer() {
         <p className="m-0 max-w-[560px] text-[13px] leading-[1.6] text-[#6b6f78]">
           TaterScout — an FTC scouting dashboard. Data from the{" "}
           <a
-            href="https://ftcscout.org"
+            href="https://frc-events.firstinspires.org/services/API"
             target="_blank"
             rel="noreferrer"
             className="text-accent no-underline hover:underline"
           >
-            FTCScout
-          </a>{" "}
-          public API. Not affiliated with FIRST.
+            official FIRST Tech Challenge Events API
+          </a>
+          . Not affiliated with FIRST.
         </p>
       </div>
     </footer>

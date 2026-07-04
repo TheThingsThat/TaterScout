@@ -17,7 +17,7 @@ export interface QuickStats {
   tot: QuickStat;
   auto: QuickStat;
   dc: QuickStat;
-  eg: QuickStat;
+  eg?: QuickStat; // endgame is folded into teleop in our OPR model
 }
 
 export interface AwardLite {
@@ -123,6 +123,13 @@ export interface EventAward {
   teamNumber: number | null;
 }
 
+/** Playoff alliance selection (from FIRST /alliances). */
+export interface EventAlliance {
+  number: number;
+  captain: number | null;
+  picks: number[]; // 1st/2nd selections (+ backup) in order
+}
+
 export interface EventDetail {
   code: string;
   season: number;
@@ -141,6 +148,7 @@ export interface EventDetail {
   website: string | null;
   liveStreamURL: string | null;
   awards: EventAward[];
+  alliances: EventAlliance[];
   teams: EventTeam[];
   matches: Match[];
 }

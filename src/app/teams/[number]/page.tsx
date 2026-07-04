@@ -7,6 +7,7 @@ import { eventTypeLabel, eventTypeWeight, awardLabel } from "@/lib/ftc/labels";
 import { formatDate, formatClock, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getTrajectory } from "@/lib/trajectory";
+import type { QuickStats } from "@/lib/ftc/types";
 import { ensureLoaded } from "@/lib/data/store";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
@@ -117,6 +118,20 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const epaTeamCount = getTeamCount(season);
   const traj = getTrajectory(season, num);
 
+  // Season OPR tiles come from our own store (FIRST has no season OPR). Endgame
+  // is folded into TeleOp, so only three tiles show.
+  const oprStats: QuickStats | null =
+    epa && epa.oprNp != null
+      ? {
+          season,
+          number: num,
+          count: epaTeamCount,
+          tot: { value: epa.oprNp, rank: epa.rkOprNp ?? 0 },
+          auto: { value: epa.oprAuto ?? 0, rank: epa.rkOprAuto ?? 0 },
+          dc: { value: epa.oprTele ?? 0, rank: epa.rkOprTele ?? 0 },
+        }
+      : null;
+
   // Live: predicted next match at any ongoing event this team is registered for.
   const ongoing = team.events
     .filter((e) => e.event.ongoing)
@@ -176,7 +191,8 @@ export default async function TeamPage({ params, searchParams }: Props) {
               </h1>
             </div>
             <p className="mt-3.5 text-[14px] text-muted">
-              {locationStr(team.location)} · Rookie year {team.rookieYear}
+              {locationStr(team.location)}
+              {team.rookieYear > 0 ? ` · Rookie year ${team.rookieYear}` : ""}
             </p>
             {team.schoolName && (
               <p className="mt-1 text-[14px] text-[#6b6f78]">{team.schoolName}</p>
@@ -235,8 +251,8 @@ export default async function TeamPage({ params, searchParams }: Props) {
       {/* OPR */}
       <section>
         <h2 className={`mb-3.5 ${HEADING}`}>{seasonFull(season)} — OPR</h2>
-        {team.quickStats ? (
-          <StatTiles stats={team.quickStats} />
+        {oprStats ? (
+          <StatTiles stats={oprStats} />
         ) : (
           <div className="card p-6 text-center text-sm text-muted">
             No ranked stats for {team.number} in {seasonLabel(season)}.
@@ -307,7 +323,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
               >
                 <div className="text-[14px] font-medium">
                   {awardLabel(a.type)}
-                  {a.placement > 0 ? ` #${a.placement}` : ""}
+                  {a.placement > 1 ? ` #${a.placement}` : ""}
                 </div>
                 <Link
                   href={`/events/${season}/${a.eventCode}`}

@@ -51,10 +51,12 @@ function Tile({
 }
 
 export default function StatTiles({ stats }: { stats: QuickStats }) {
+  const tiles = TILES.filter((t) => stats[t.key] != null);
+  const cols = tiles.length >= 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
   return (
-    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-      {TILES.map((t) => (
-        <Tile key={t.key} label={t.label} hint={t.hint} stat={stats[t.key]} count={stats.count} />
+    <div className={`grid grid-cols-2 gap-3.5 ${cols}`}>
+      {tiles.map((t) => (
+        <Tile key={t.key} label={t.label} hint={t.hint} stat={stats[t.key]!} count={stats.count} />
       ))}
     </div>
   );

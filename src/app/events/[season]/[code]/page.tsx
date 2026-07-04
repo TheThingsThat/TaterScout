@@ -16,7 +16,6 @@ import EventSos from "@/components/EventSos";
 import EventResults, { type ResultTeam } from "@/components/EventResults";
 import EventPredictionAccuracy from "@/components/EventPredictionAccuracy";
 import Collapsible from "@/components/Collapsible";
-import { deriveAllianceNumbers } from "@/lib/ftc/alliances";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import { simulateEvent, type SimTeam } from "@/lib/predict/simulate";
 import { computeSos } from "@/lib/predict/sos";
@@ -103,12 +102,9 @@ export default async function EventPage({ params, searchParams }: Props) {
     ? Math.max(1, Math.round((realSchedule.length * 4) / Math.max(1, teamNums.length)))
     : 5;
 
-  const po = ev.matches.filter((m) => m.tournamentLevel !== "Quals");
-  const captains = new Set(
-    po.flatMap((m) => m.teams).filter((t) => t.allianceRole === "Captain").map((t) => t.teamNumber),
-  );
-  const allianceCount = captains.size || undefined;
-  const allianceSize = po.some((m) => m.teams.some((t) => t.allianceRole === "SecondPick"))
+  // Playoff alliance structure comes from FIRST's /alliances selection.
+  const allianceCount = ev.alliances.length || undefined;
+  const allianceSize = ev.alliances.some((a) => a.picks.length >= 2)
     ? 3
     : allianceCount
       ? 2
@@ -174,12 +170,12 @@ export default async function EventPage({ params, searchParams }: Props) {
     ? computeSos({ teams: teamNums, epaOf: (i) => postEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
     : null;
 
-  // --- Playoff alliance numbers (derived) for the match list ---
-  const rankOf = new Map<number, number>();
-  for (const t of ev.teams) {
-    if (t.stats?.rank != null) rankOf.set(t.teamNumber, t.stats.rank);
+  // --- Playoff alliance numbers (from FIRST) for the match list ---
+  const allianceOf = new Map<number, number>();
+  for (const a of ev.alliances) {
+    if (a.captain != null) allianceOf.set(a.captain, a.number);
+    for (const p of a.picks) allianceOf.set(p, a.number);
   }
-  const allianceOf = deriveAllianceNumbers(ev.matches, rankOf);
 
   // --- Results (from event awards): winning/finalist alliance + Inspire ---
   const nameOf = new Map(ev.teams.map((t) => [t.teamNumber, t.team.name]));
@@ -263,6 +259,14 @@ export default async function EventPage({ params, searchParams }: Props) {
               className={OUTLINE_BTN}
             >
               FTCScout ↗
+            </a>
+            <a
+              href={`https://ftc-events.firstinspires.org/${season}/${ev.code}`}
+              target="_blank"
+              rel="noreferrer"
+              className={OUTLINE_BTN}
+            >
+              FIRST ↗
             </a>
           </div>
         </div>

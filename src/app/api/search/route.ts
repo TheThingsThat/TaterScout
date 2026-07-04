@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ teams: [], events: [] });
   }
 
-  // One round-trip for both; FTCScout ignores `limit`, so cap here for a tidy
-  // dropdown. The underlying gql is cached ~10 min; let clients/CDN cache too.
+  // Teams + events from our local search index (loaded from the store); cap to a
+  // tidy dropdown. Let clients/CDN cache the response too.
   const { teams, events } = await searchAll(q, season).catch(() => ({
     teams: [],
     events: [],

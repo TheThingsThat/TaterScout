@@ -10,8 +10,8 @@ const SEASON = 2025;
 let inFlight = false;
 
 /**
- * Incrementally pull NEW/changed data from FTCScout (cross-verified against what
- * we already have) and recompute the derived fields. No-op when nothing changed.
+ * Incrementally pull NEW/changed data from the FIRST API (cross-verified against
+ * what we already have) and recompute the derived fields. No-op when nothing changed.
  */
 export async function POST() {
   if (inFlight) {

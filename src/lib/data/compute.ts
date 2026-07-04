@@ -35,23 +35,29 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
   const epaTraj = new Map<number, EpaTrajPoint[]>();
   const { teams: epa, config: epaCfg } = computeEpa(epaMatches, {}, epaTraj);
 
-  // --- OPR: season + per-event from FTCScout; per-match locally (trajectory) ---
+  // --- OPR (computed locally — FIRST provides none). Per-event final solve over
+  //     QUALIFICATION matches only, no-show/uneven matches excluded (playoff
+  //     alliances are hand-picked → break OPR additivity). Season value = the
+  //     per-component MAX across a team's events (mirrors FTCScout's quickStats).
   const eventFinalOpr = new Map<string, Map<number, Triple>>();
-  const seasonOpr = new Map<number, Triple>(); // per-component max event OPR (= FTCScout quickStats)
+  const seasonOpr = new Map<number, Triple>();
   for (const e of events) {
-    const evMap = new Map<number, Triple>();
-    for (const t of e.teams) {
-      if (!t.opr) continue;
-      evMap.set(t.num, t.opr);
-      const cur = seasonOpr.get(t.num);
+    const obs: AllianceObs[] = [];
+    for (const m of e.matches) {
+      if (m.level !== "Quals") continue;
+      if (m.red.length !== 2 || m.blue.length !== 2) continue; // skip no-show / uneven
+      obs.push({ teams: m.red, v: [m.ra + m.rt, m.ra, m.rt] });
+      obs.push({ teams: m.blue, v: [m.ba + m.bt, m.ba, m.bt] });
+    }
+    const sol = solveEventOpr(obs);
+    eventFinalOpr.set(e.code, sol);
+    for (const [team, v] of sol) {
+      const cur = seasonOpr.get(team);
       seasonOpr.set(
-        t.num,
-        cur
-          ? [Math.max(cur[0], t.opr[0]), Math.max(cur[1], t.opr[1]), Math.max(cur[2], t.opr[2])]
-          : t.opr,
+        team,
+        cur ? [Math.max(cur[0], v[0]), Math.max(cur[1], v[1]), Math.max(cur[2], v[2])] : v,
       );
     }
-    eventFinalOpr.set(e.code, evMap);
   }
 
   // Cumulative OPR after EVERY match (for the trajectory chart). No-shows kept.
@@ -79,27 +85,15 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
       matchMeta.set(m.key, { num: m.num, series: m.series });
     }
 
-  // --- Names + region (mode of event regions a team appears in) ---
+  // --- Names + region (from FIRST: the team's homeRegion, constant per team) ---
   const names = new Map<number, string>();
-  const regionVotes = new Map<number, Map<string, number>>();
-  for (const e of events) {
-    for (const t of e.teams) if (!names.has(t.num)) names.set(t.num, t.name);
-    if (e.region) {
-      const present = new Set<number>();
-      for (const m of e.matches) for (const t of [...m.red, ...m.blue]) present.add(t);
-      for (const t of e.teams) present.add(t.num);
-      for (const t of present) {
-        const v = regionVotes.get(t) ?? new Map();
-        v.set(e.region, (v.get(e.region) ?? 0) + 1);
-        regionVotes.set(t, v);
-      }
+  const regionMap = new Map<number, string>();
+  for (const e of events)
+    for (const t of e.teams) {
+      if (!names.has(t.num)) names.set(t.num, t.name);
+      if (t.region && !regionMap.has(t.num)) regionMap.set(t.num, t.region);
     }
-  }
-  const regionOf = (t: number): string | null => {
-    const v = regionVotes.get(t);
-    if (!v) return null;
-    return [...v.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  };
+  const regionOf = (t: number): string | null => regionMap.get(t) ?? null;
 
   // --- Assemble per-team records ---
   interface Rec {
@@ -231,6 +225,40 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
     }
   }
 
+  // --- World record: highest no-penalty alliance score of the season ---
+  let worldRecord: ComputedData["rankings"]["worldRecord"] = null;
+  {
+    let best = -1;
+    let bestEv: RawEvent | null = null;
+    let bestTeams: number[] = [];
+    for (const e of events)
+      for (const m of e.matches) {
+        const r = m.ra + m.rt;
+        const b = m.ba + m.bt;
+        if (r > best) { best = r; bestEv = e; bestTeams = m.red; }
+        if (b > best) { best = b; bestEv = e; bestTeams = m.blue; }
+      }
+    if (bestEv && best >= 0)
+      worldRecord = {
+        eventCode: bestEv.code,
+        eventName: bestEv.name,
+        eventStart: bestEv.start,
+        score: best,
+        teams: bestTeams.map((num) => ({ number: num, name: names.get(num) ?? `Team ${num}` })),
+      };
+  }
+
+  // --- Search index: lightweight event rows (FIRST has no fuzzy search) ---
+  const eventsIndex = events.map((e) => ({
+    code: e.code,
+    name: e.name,
+    start: e.start,
+    type: e.type,
+    city: e.city ?? null,
+    state: e.state ?? null,
+    country: e.country ?? null,
+  }));
+
   return {
     rankings: {
       season,
@@ -241,6 +269,8 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
       cyclePriors,
       simModel,
       teams: teamsObj,
+      worldRecord,
+      events: eventsIndex,
     },
     trajectories: {
       season,

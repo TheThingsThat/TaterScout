@@ -79,7 +79,7 @@ export default function RefreshButton() {
       <button
         onClick={refresh}
         disabled={loading}
-        title="Fetch new data from FTCScout and recompute"
+        title="Fetch new data from the FIRST API and recompute"
         aria-label="Refresh data"
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#232323] text-[#9aa0aa] transition-colors hover:border-[#3a3a3a] hover:text-foreground disabled:opacity-60"
       >

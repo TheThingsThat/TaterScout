@@ -1,239 +1,294 @@
-// FTCScout crawl + incremental "only new data" delta detection.
-// Used by both the offline CLI (full crawl) and the runtime refresh route.
+// Crawl + incremental delta detection from the official FIRST FTC Events API.
+// One event = matches (all levels, one call) joined with the per-level score
+// breakdowns (auto/teleop/RP). Team names + regions come from FIRST's teams
+// endpoint. OPR is NOT provided by FIRST — we compute it in compute.ts.
+import { firstGet } from "../ftc/first";
+import { normalizeEventType } from "../ftc/labels";
 import type { RawEvent, RawMatch } from "./types";
 
-const ENDPOINT = "https://api.ftcscout.org/graphql";
-const CONCURRENCY = 10;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const CONCURRENCY = 6;
 
-/** Plain fetch + 429 backoff + per-request timeout (so a stalled/throttled
- *  connection fails fast instead of hanging for minutes); `no-store` so a
- *  refresh always sees fresh data. */
-async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, variables }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.status === 429) {
-        await sleep(1000 * (attempt + 1));
-        continue;
-      }
-      const json = await res.json();
-      if (json.errors) throw new Error(JSON.stringify(json.errors).slice(0, 200));
-      return json.data as T;
-    } catch (e) {
-      if (attempt === 3) throw e;
-      await sleep(500 * (attempt + 1));
-    }
-  }
-  throw new Error("unreachable");
-}
-
-interface ApiAlliance {
-  autoPoints: number; dcPoints: number;
-  movementRp: number; goalRp: number; patternRp: number;
-}
-interface ApiMatch {
-  hasBeenPlayed: boolean;
-  tournamentLevel: string;
-  matchNum: number;
-  series: number;
-  actualStartTime: string | null;
-  scheduledStartTime: string | null;
-  teams: { teamNumber: number; alliance: string; onField: boolean }[];
-  scores: { red?: ApiAlliance; blue?: ApiAlliance } | null;
-}
-interface ApiEvent {
+// --- FIRST response shapes (only the fields we use) ---
+interface FirstEvent {
+  code: string;
   name: string | null;
-  start: string | null;
-  type: string | null;
+  typeName: string | null;
   regionCode: string | null;
-  updatedAt: string | null;
-  teams: {
-    teamNumber: number;
-    team: { name: string };
-    stats: { opr: { totalPointsNp: number; autoPoints: number; dcPoints: number } } | null;
-  }[];
-  matches: ApiMatch[];
+  city: string | null;
+  stateprov: string | null;
+  country: string | null;
+  dateStart: string | null;
+  dateEnd: string | null;
+}
+interface FirstMatchTeam {
+  teamNumber: number;
+  station: string; // "Red1" | "Red2" | "Blue1" | "Blue2"
+  onField: boolean;
+}
+interface FirstMatch {
+  actualStartTime: string | null;
+  scheduledStartTime?: string | null;
+  postResultTime: string | null;
+  tournamentLevel: string; // "PRACTICE" | "QUALIFICATION" | "PLAYOFF"
+  series: number;
+  matchNumber: number;
+  teams: FirstMatchTeam[];
+  modifiedOn?: string | null;
+}
+interface FirstAllianceScore {
+  alliance: "Red" | "Blue";
+  autoPoints: number;
+  teleopPoints: number;
+  movementRP: boolean;
+  goalRP: boolean;
+  patternRP: boolean;
+}
+interface FirstMatchScore {
+  matchLevel: string;
+  matchSeries: number;
+  matchNumber: number;
+  alliances: FirstAllianceScore[];
+}
+interface FirstTeam {
+  teamNumber: number;
+  nameShort: string | null;
+  homeRegion: string | null;
 }
 
-function eventQuery(season: number): string {
-  return `
-    query Ev($season: Int!, $code: String!) {
-      eventByCode(season: $season, code: $code) {
-        name
-        start
-        type
-        regionCode
-        updatedAt
-        teams {
-          teamNumber
-          team { name }
-          stats { ... on TeamEventStats${season} { opr { totalPointsNp autoPoints dcPoints } } }
-        }
-        matches {
-          hasBeenPlayed
-          tournamentLevel
-          matchNum
-          series
-          actualStartTime
-          scheduledStartTime
-          teams { teamNumber alliance onField }
-          scores {
-            ... on MatchScores${season} {
-              red { autoPoints dcPoints movementRp goalRp patternRp }
-              blue { autoPoints dcPoints movementRp goalRp patternRp }
-            }
-          }
-        }
-      }
+// --- fetch helpers ---
+const evOpts = { revalidate: undefined as number | undefined }; // crawl = no-store
+
+const getEventsList = (season: number) =>
+  firstGet<{ events: FirstEvent[] }>(`${season}/events`, evOpts);
+const getEventDetail = (season: number, code: string) =>
+  firstGet<{ events: FirstEvent[] }>(`${season}/events?eventCode=${code}`, evOpts);
+const getMatches = (season: number, code: string) =>
+  firstGet<{ matches: FirstMatch[] }>(`${season}/matches/${code}`, evOpts);
+const getScores = (season: number, code: string, level: "qual" | "playoff") =>
+  firstGet<{ matchScores: FirstMatchScore[] }>(`${season}/scores/${code}/${level}`, evOpts);
+
+/** All teams (paginated) → name + homeRegion. */
+async function fetchAllTeams(season: number): Promise<Map<number, { name: string; region: string | null }>> {
+  const map = new Map<number, { name: string; region: string | null }>();
+  let page = 1;
+  let total = 1;
+  do {
+    const r = await firstGet<{ teams: FirstTeam[]; pageTotal: number }>(
+      `${season}/teams?page=${page}`,
+      evOpts,
+    );
+    for (const t of r?.teams ?? [])
+      map.set(t.teamNumber, { name: t.nameShort ?? `Team ${t.teamNumber}`, region: t.homeRegion ?? null });
+    total = r?.pageTotal ?? 1;
+    page++;
+  } while (page <= total);
+  return map;
+}
+
+/** One event's team roster → name + homeRegion (paginated). */
+async function fetchEventTeams(season: number, code: string): Promise<Map<number, { name: string; region: string | null }>> {
+  const map = new Map<number, { name: string; region: string | null }>();
+  let page = 1;
+  let total = 1;
+  do {
+    const r = await firstGet<{ teams: FirstTeam[]; pageTotal: number }>(
+      `${season}/teams?eventCode=${code}&page=${page}`,
+      evOpts,
+    );
+    for (const t of r?.teams ?? [])
+      map.set(t.teamNumber, { name: t.nameShort ?? `Team ${t.teamNumber}`, region: t.homeRegion ?? null });
+    total = r?.pageTotal ?? 1;
+    page++;
+  } while (page <= total);
+  return map;
+}
+
+const levelOf = (tournamentLevel: string) =>
+  tournamentLevel === "QUALIFICATION" ? "Quals" : "Playoff";
+
+/** Join matches + score breakdowns into RawMatch[] (played matches only). */
+function buildRawEvent(
+  detail: FirstEvent,
+  matches: FirstMatch[],
+  scores: FirstMatchScore[],
+  teamInfo: Map<number, { name: string; region: string | null }>,
+): RawEvent {
+  // key: `${LEVEL}|${series}|${matchNumber}` -> per-alliance score
+  const scoreByKey = new Map<string, { red?: FirstAllianceScore; blue?: FirstAllianceScore }>();
+  for (const s of scores) {
+    const key = `${s.matchLevel}|${s.matchSeries}|${s.matchNumber}`;
+    const entry = scoreByKey.get(key) ?? {};
+    for (const a of s.alliances) {
+      if (a.alliance === "Red") entry.red = a;
+      else if (a.alliance === "Blue") entry.blue = a;
     }
-  `;
-}
+    scoreByKey.set(key, entry);
+  }
 
-/** Convert an FTCScout event payload into our RawEvent (filtering played matches). */
-function toRawEvent(code: string, e: ApiEvent | null): RawEvent | null {
-  if (!e) return null;
-  const matches: RawMatch[] = [];
-  for (const m of e.matches) {
-    if (!m.hasBeenPlayed || !m.scores?.red || !m.scores?.blue) continue;
-    const time = Date.parse(m.actualStartTime ?? m.scheduledStartTime ?? "");
+  const out: RawMatch[] = [];
+  let updatedAt: string | null = null;
+  const teamNums = new Set<number>();
+
+  const ordered = [...matches].sort(
+    (a, b) => a.matchNumber - b.matchNumber || a.series - b.series,
+  );
+  for (const m of ordered) {
+    if (m.tournamentLevel === "PRACTICE") continue;
+    const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
+    if (!sc?.red || !sc?.blue) continue; // unplayed / no breakdown
+    const time = Date.parse(m.actualStartTime ?? m.postResultTime ?? m.scheduledStartTime ?? "");
     if (Number.isNaN(time)) continue;
-    const red = m.teams.filter((t) => t.alliance === "Red" && t.onField).map((t) => t.teamNumber);
-    const blue = m.teams.filter((t) => t.alliance === "Blue" && t.onField).map((t) => t.teamNumber);
+    const red = m.teams.filter((t) => t.onField && t.station.startsWith("Red")).map((t) => t.teamNumber);
+    const blue = m.teams.filter((t) => t.onField && t.station.startsWith("Blue")).map((t) => t.teamNumber);
     if (!red.length || !blue.length) continue;
-    matches.push({
-      key: `${code}-${matches.length}`,
-      time, level: m.tournamentLevel, num: m.matchNum, series: m.series, red, blue,
-      ra: m.scores.red.autoPoints, rt: m.scores.red.dcPoints,
-      ba: m.scores.blue.autoPoints, bt: m.scores.blue.dcPoints,
-      rrp: [m.scores.red.movementRp, m.scores.red.goalRp, m.scores.red.patternRp],
-      brp: [m.scores.blue.movementRp, m.scores.blue.goalRp, m.scores.blue.patternRp],
+    for (const t of [...red, ...blue]) teamNums.add(t);
+    if (m.modifiedOn && (!updatedAt || m.modifiedOn > updatedAt)) updatedAt = m.modifiedOn;
+    out.push({
+      key: `${detail.code}-${out.length}`,
+      time,
+      level: levelOf(m.tournamentLevel),
+      num: m.matchNumber,
+      series: m.series,
+      red,
+      blue,
+      ra: sc.red.autoPoints,
+      rt: sc.red.teleopPoints,
+      ba: sc.blue.autoPoints,
+      bt: sc.blue.teleopPoints,
+      rrp: [sc.red.movementRP ? 1 : 0, sc.red.goalRP ? 1 : 0, sc.red.patternRP ? 1 : 0],
+      brp: [sc.blue.movementRP ? 1 : 0, sc.blue.goalRP ? 1 : 0, sc.blue.patternRP ? 1 : 0],
     });
   }
+
   return {
-    code,
-    name: e.name,
-    start: e.start,
-    region: e.regionCode,
-    type: e.type ?? "Other",
-    updatedAt: e.updatedAt,
-    matches,
-    teams: e.teams.map((t) => ({
-      num: t.teamNumber,
-      name: t.team.name,
-      opr: t.stats?.opr
-        ? ([t.stats.opr.totalPointsNp, t.stats.opr.autoPoints, t.stats.opr.dcPoints] as [number, number, number])
-        : null,
+    code: detail.code,
+    name: detail.name,
+    start: detail.dateStart,
+    type: normalizeEventType(detail.typeName),
+    updatedAt,
+    city: detail.city,
+    state: detail.stateprov,
+    country: detail.country,
+    matches: out,
+    teams: [...teamNums].map((num) => ({
+      num,
+      name: teamInfo.get(num)?.name ?? `Team ${num}`,
+      region: teamInfo.get(num)?.region ?? null,
     })),
   };
 }
 
-/** Fetch one event fully. */
+/** Fetch one event fully (self-contained; used by the refresh). */
 export async function fetchEvent(season: number, code: string): Promise<RawEvent | null> {
-  const data = await gql<{ eventByCode: ApiEvent | null }>(eventQuery(season), { season, code });
-  return toRawEvent(code, data.eventByCode);
+  const [detailR, matchR, qs, ps, teamInfo] = await Promise.all([
+    getEventDetail(season, code),
+    getMatches(season, code),
+    getScores(season, code, "qual"),
+    getScores(season, code, "playoff"),
+    fetchEventTeams(season, code),
+  ]);
+  const detail = detailR?.events?.[0];
+  if (!detail) return null;
+  const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
+  return buildRawEvent(detail, matchR?.matches ?? [], scores, teamInfo);
 }
 
-/** All event codes (with matches) for a season — lightweight. */
 export async function fetchAllCodes(season: number): Promise<string[]> {
-  const { eventsSearch } = await gql<{ eventsSearch: { code: string }[] }>(
-    `query($s: Int!){ eventsSearch(season: $s, hasMatches: true){ code } }`,
-    { s: season },
-  );
-  return eventsSearch.map((e) => e.code);
+  const r = await getEventsList(season);
+  return (r?.events ?? []).map((e) => e.code);
 }
 
-const ymd = (d: Date) => d.toISOString().slice(0, 10);
-
-/** Events in the recent/active window, with their change watermark. */
-export async function fetchActiveWindow(
-  season: number,
-  lookbackDays = 14,
-  lookaheadDays = 3,
-): Promise<{ code: string; updatedAt: string | null }[]> {
-  const now = Date.now();
-  const start = ymd(new Date(now - lookbackDays * 86400000));
-  const end = ymd(new Date(now + lookaheadDays * 86400000));
-  // hasMatches:true mirrors our ingest filter, so match-less (upcoming/empty)
-  // events don't show up as spurious "new data".
-  const { eventsSearch } = await gql<{ eventsSearch: { code: string; updatedAt: string | null }[] }>(
-    `query($s: Int!, $st: Date, $e: Date){ eventsSearch(season: $s, start: $st, end: $e, hasMatches: true){ code updatedAt } }`,
-    { s: season, st: start, e: end },
-  );
-  return eventsSearch;
-}
-
-/** Full crawl of a season (offline CLI). */
+/** Full-season crawl. Uses one events list + a global team index, then 3 calls
+ *  per event (matches + qual scores + playoff scores). */
 export async function fetchAllEvents(
   season: number,
   onProgress?: (done: number, total: number) => void,
 ): Promise<RawEvent[]> {
-  const codes = await fetchAllCodes(season);
+  const [evR, teamIndex] = await Promise.all([getEventsList(season), fetchAllTeams(season)]);
+  const details = evR?.events ?? [];
   const out: RawEvent[] = [];
   let done = 0;
-  const queue = [...codes];
+  const queue = [...details];
   async function worker() {
     while (queue.length) {
-      const code = queue.pop()!;
+      const d = queue.pop()!;
       try {
-        const ev = await fetchEvent(season, code);
-        if (ev) out.push(ev);
+        const [matchR, qs, ps] = await Promise.all([
+          getMatches(season, d.code),
+          getScores(season, d.code, "qual"),
+          getScores(season, d.code, "playoff"),
+        ]);
+        const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
+        const ev = buildRawEvent(d, matchR?.matches ?? [], scores, teamIndex);
+        if (ev.matches.length) out.push(ev);
       } catch {
         /* skip a failed event */
       }
       done++;
-      onProgress?.(done, codes.length);
+      onProgress?.(done, details.length);
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
   return out;
 }
 
+/** Recent/active events (overlapping now ± window). */
+export async function fetchActiveWindow(
+  season: number,
+  lookbackDays = 14,
+  lookaheadDays = 3,
+): Promise<string[]> {
+  const evR = await getEventsList(season);
+  const now = Date.now();
+  const lo = now - lookbackDays * 86400000;
+  const hi = now + lookaheadDays * 86400000;
+  return (evR?.events ?? [])
+    .filter((e) => {
+      const s = Date.parse(e.dateStart ?? "");
+      const en = Date.parse(e.dateEnd ?? e.dateStart ?? "");
+      return !Number.isNaN(s) && en >= lo && s <= hi;
+    })
+    .map((e) => e.code);
+}
+
 const natKey = (m: RawMatch) => `${m.level}|${m.series}|${m.num}`;
 
 export interface DeltaResult {
-  events: RawEvent[]; // merged set (current + new/updated)
+  events: RawEvent[];
   changed: boolean;
   newEvents: string[];
   updatedEvents: string[];
   newMatches: number;
 }
 
-/**
- * Cross-verify against what we already have and fetch ONLY new/changed data:
- *   - new events appearing in the active window (not in our set), and
- *   - existing events whose FTCScout `updatedAt` advanced past our watermark.
- * Returns the merged event set + a summary. No-op when nothing changed.
- */
+/** Re-ingest the active-window events (few) and merge; report only real changes. */
 export async function fetchDeltas(season: number, current: RawEvent[]): Promise<DeltaResult> {
   const byCode = new Map(current.map((e) => [e.code, e]));
   const window = await fetchActiveWindow(season);
-
-  const newCodes: string[] = [];
-  const dirtyCodes: string[] = [];
-  for (const w of window) {
-    const cur = byCode.get(w.code);
-    if (!cur) newCodes.push(w.code);
-    else if ((w.updatedAt ?? "") > (cur.updatedAt ?? "")) dirtyCodes.push(w.code);
-  }
 
   const events = [...current];
   const newEvents: string[] = [];
   const updatedEvents: string[] = [];
   let newMatches = 0;
 
-  for (const code of [...newCodes, ...dirtyCodes]) {
-    const fresh = await fetchEvent(season, code);
-    if (!fresh) continue;
+  for (const code of window) {
+    let fresh: RawEvent | null = null;
+    try {
+      fresh = await fetchEvent(season, code);
+    } catch {
+      continue;
+    }
+    if (!fresh || !fresh.matches.length) continue;
     const old = byCode.get(code);
     const oldKeys = new Set((old?.matches ?? []).map(natKey));
-    newMatches += fresh.matches.filter((m) => !oldKeys.has(natKey(m))).length;
+    const added = fresh.matches.filter((m) => !oldKeys.has(natKey(m))).length;
+    const changed =
+      !old ||
+      added > 0 ||
+      old.matches.length !== fresh.matches.length ||
+      (fresh.updatedAt ?? "") > (old.updatedAt ?? "");
+    if (!changed) continue;
+    newMatches += added;
     const idx = events.findIndex((e) => e.code === code);
     if (idx >= 0) {
       events[idx] = fresh;
