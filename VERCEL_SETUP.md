@@ -1,4 +1,8 @@
-# Vercel setup — making the refresh button work in production
+# Vercel setup — running TaterScout in production
+
+Two things production needs: **FIRST API credentials** (live team/event pages
+call the FIRST API at request time) and a **Vercel Blob store** (the read-only
+serverless filesystem can't persist a refresh, so datasets live in Blob).
 
 The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
 
@@ -11,26 +15,42 @@ The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
 
 ## One-time setup
 
-1. **Create a Blob store**: Vercel dashboard → your project → **Storage** →
-   **Create** → **Blob** → connect it to the project. This auto-injects
-   `BLOB_READ_WRITE_TOKEN` into the deployment's environment (Production + Preview).
+1. **Add the FIRST API credentials** (REQUIRED). Vercel dashboard → your project →
+   **Settings** → **Environment Variables** → add both, for **Production** (and
+   Preview if you use it):
 
-2. **(Optional) `BLOB_BASE_URL`**: set it to the store's public base
+   | Name | Value |
+   | --- | --- |
+   | `FIRST_API_USER` | your FIRST API username |
+   | `FIRST_API_TOKEN` | your FIRST API token |
+
+   Same values as your local `.env.local`. Without them, event and team pages
+   throw at request time (they fetch from FIRST live).
+
+2. **Create a Blob store**: Vercel dashboard → your project → **Storage** →
+   **Create** → **Blob** (access **Public**) → connect it to the project. This
+   auto-injects `BLOB_READ_WRITE_TOKEN` into the deployment (Production + Preview).
+
+3. **(Optional) `BLOB_BASE_URL`**: set it to the store's public base
    (`https://<store-id>.public.blob.vercel-storage.com`) to skip a per-read
    `head()` lookup. If omitted, the app resolves blob URLs automatically.
 
-3. **Seed the store** — upload your current local datasets to Blob (instant, no
-   crawl). Copy the token from the Blob store's settings and run:
+4. **Seed the store** — upload your current local datasets to Blob (instant, no
+   crawl). Copy the token from the Blob store's settings and run from the project
+   root:
 
    ```sh
    BLOB_READ_WRITE_TOKEN="<token from the Vercel store>" \
      npx tsx scripts/seed-blob.ts 2025
    ```
 
-   (Or, for a fresh crawl instead of uploading local data, run
-   `scripts/build-epa.ts 2025` with the same token — slower, one-time.)
+   Uploads the four current datasets (`rankings`, `trajectories`, `event-stats`,
+   and the latest `raw-2025-v*` cache — the script auto-detects the version).
+   Re-run any time you regenerate data locally so Blob overwrites the old copy.
+   (Or, for a fresh crawl instead of uploading, run `build-epa.ts 2025 --refetch`
+   with the FIRST + Blob env vars set — slower, one-time.)
 
-4. **Redeploy.** The app now reads datasets from Blob, and the **refresh button**
+5. **Redeploy.** The app now reads datasets from Blob, and the **refresh button**
    (or a future cron) writes to Blob → trajectory, rankings, EPA and event-stats
    update live in production.
 
