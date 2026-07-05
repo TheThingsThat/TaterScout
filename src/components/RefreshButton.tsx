@@ -66,13 +66,17 @@ export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | 
       const j: RefreshResult = await res.json();
       if (!res.ok || j.error) {
         setMsg(j.error ?? "Refresh failed");
-      } else if (!j.changed) {
-        setMsg("Up to date");
       } else {
-        const parts: string[] = [];
-        if (j.newMatches) parts.push(`${j.newMatches} match${j.newMatches === 1 ? "" : "es"}`);
-        if (j.newEvents) parts.push(`${j.newEvents} new event${j.newEvents === 1 ? "" : "s"}`);
-        setMsg(`Added ${parts.join(", ") || "updates"}`);
+        if (!j.changed) {
+          setMsg("Up to date");
+        } else {
+          const parts: string[] = [];
+          if (j.newMatches) parts.push(`${j.newMatches} match${j.newMatches === 1 ? "" : "es"}`);
+          if (j.newEvents) parts.push(`${j.newEvents} new event${j.newEvents === 1 ? "" : "s"}`);
+          setMsg(`Added ${parts.join(", ") || "updates"}`);
+        }
+        // Re-render either way so the "Updated" stamp reflects the store's
+        // current recompute time, not the value baked in at page load.
         router.refresh();
       }
     } catch {
