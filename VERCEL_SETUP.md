@@ -15,17 +15,20 @@ The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
 
 ## One-time setup
 
-1. **Add the FIRST API credentials** (REQUIRED). Vercel dashboard → your project →
-   **Settings** → **Environment Variables** → add both, for **Production** (and
+1. **Add the environment variables.** Vercel dashboard → your project →
+   **Settings** → **Environment Variables** → add these, for **Production** (and
    Preview if you use it):
 
    | Name | Value |
    | --- | --- |
    | `FIRST_API_USER` | your FIRST API username |
    | `FIRST_API_TOKEN` | your FIRST API token |
+   | `CRON_SECRET` | any long random string (secures the scheduled-sync endpoint) |
 
-   Same values as your local `.env.local`. Without them, event and team pages
-   throw at request time (they fetch from FIRST live).
+   `FIRST_API_*` are the same values as your local `.env.local`; without them,
+   event and team pages throw at request time (they fetch from FIRST live).
+   `CRON_SECRET` is sent by Vercel Cron as `Authorization: Bearer <CRON_SECRET>`
+   and required by `GET /api/refresh` (see step 5).
 
 2. **Create a Blob store**: Vercel dashboard → your project → **Storage** →
    **Create** → **Blob** (access **Public**) → connect it to the project. This
@@ -50,27 +53,51 @@ The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
    (Or, for a fresh crawl instead of uploading, run `build-epa.ts 2025 --refetch`
    with the FIRST + Blob env vars set — slower, one-time.)
 
-5. **Redeploy.** The app now reads datasets from Blob, and the **refresh button**
-   (or a future cron) writes to Blob → trajectory, rankings, EPA and event-stats
-   update live in production.
+5. **Enable scheduled live updates.** `vercel.json` already declares a cron:
 
-## How data stays fresh (no cron needed)
+   ```json
+   { "crons": [{ "path": "/api/refresh", "schedule": "* * * * *" }] }
+   ```
 
-Freshness is **traffic-driven** (`src/lib/data/autoRefresh.ts`): every page view
-schedules a post-response staleness check (Next `after()` — pages never wait on
-it). When the store is due, the shared incremental sync runs: fetch the active
-window from FIRST → if anything changed, recompute EPA/OPR/sim-model/
-trajectories/world-record/search-index → persist to Blob. Cadence adapts:
+   - **Pro plan:** Vercel runs this **every minute** — the serverless equivalent
+     of ftc-scout's minute loop. Nothing else to do.
+   - **Hobby plan:** Vercel crons run **once per day only**, so for minute-cadence
+     live updates drive the endpoint from an **external trigger**. Example GitHub
+     Actions workflow (`.github/workflows/refresh.yml`):
 
-| State | Sync at most every |
-| --- | --- |
-| results flowing (something changed) | 60s |
-| active window, nothing changed | 120s |
-| no active events (off-season) | 30min |
+     ```yaml
+     on:
+       schedule: [{ cron: "* * * * *" }] # every minute
+     jobs:
+       refresh:
+         runs-on: ubuntu-latest
+         steps:
+           - run: |
+               curl -fsS -X GET "https://<your-domain>/api/refresh" \
+                 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+     ```
 
-A `meta-<season>.json` dataset coordinates instances (best-effort lock; a rare
-race just re-runs an idempotent sync). The header ↻ button uses the same runner
-and bypasses the backoff.
+     (Add `CRON_SECRET` as a repo secret. cron-job.org works too.)
+
+6. **Redeploy.** The app now reads datasets from Blob, the scheduled sync keeps
+   them current during events, and the ↻ button forces an immediate full sweep.
+
+## How data stays fresh
+
+Primary path is a **scheduled sync** — Vercel Cron (Pro) or an external trigger
+(Hobby) calls `GET /api/refresh` every minute, so freshness does **not** depend
+on traffic. Emulating ftc-scout: the frequent sync scopes to **ongoing events
+only** (`start ≤ now ≤ end`), pulls their matches/scores from FIRST, and — only
+if something changed — recomputes EPA/OPR/sim-model/trajectories/world-record/
+search-index and persists to Blob. A wider ±14/+3-day sweep runs at most every
+30 min to catch late score corrections. Open event/team pages poll every ~30s
+(`LiveRefresh`) to surface new data (serverless can't push over WebSockets).
+
+A traffic-driven check (`src/lib/data/autoRefresh.ts`, Next `after()`) remains as
+a **fallback** for when the cron is off (e.g. before it's configured); its cadence
+adapts 60s/120s/30min by activity. A `meta-<season>.json` dataset coordinates
+instances (best-effort lock; a rare race just re-runs an idempotent sync). The
+header ↻ button uses the same runner and forces a full sweep.
 
 ## Notes
 
@@ -78,11 +105,10 @@ and bypasses the backoff.
   browsing during an event (dataset reads are cached ~60s per instance on top of
   the sync cadence). Event pages additionally fetch schedule/scores/ranks live
   per request, and solve per-event OPR from live scores for ongoing events.
-- **Zero-traffic gap:** with no visitors nothing syncs — the first visitor after
-  a gap gets current-store data instantly and triggers the catch-up in the
-  background. If you want syncing with zero traffic, point any external cron
-  (GitHub Actions schedule, cron-job.org, Vercel Cron on Pro) at
-  `POST /api/refresh`.
+- **Traffic independence:** with the scheduled sync configured (step 5), data
+  advances during events even with zero visitors. If you skip it, freshness falls
+  back to traffic-driven and a zero-visitor stretch means no sync until the next
+  page view (which still serves current-store data instantly).
 - **Cost/limits:** an *incremental* sync (a few changed events + recompute) is
   ~1–7s of compute and fits the function limit. A *cold full crawl* (~1,500
   events) should be done via the local `build-epa` seed, not the button.

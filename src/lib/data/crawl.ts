@@ -232,7 +232,9 @@ export async function fetchAllEvents(
   return out;
 }
 
-/** Recent/active events (overlapping now ± window). */
+/** Events overlapping now ± window. `(0, 0)` = currently-ongoing events only
+ *  (mirrors ftc-scout's Partial scope: start ≤ now ≤ end, counting the full end
+ *  day). Larger windows also catch recently-finished / soon-starting events. */
 export async function fetchActiveWindow(
   season: number,
   lookbackDays = 14,
@@ -245,7 +247,8 @@ export async function fetchActiveWindow(
   return (evR?.events ?? [])
     .filter((e) => {
       const s = Date.parse(e.dateStart ?? "");
-      const en = Date.parse(e.dateEnd ?? e.dateStart ?? "");
+      // Count the whole final day: FIRST dates are midnight, so add ~1 day.
+      const en = Date.parse(e.dateEnd ?? e.dateStart ?? "") + 86400000;
       return !Number.isNaN(s) && en >= lo && s <= hi;
     })
     .map((e) => e.code);
@@ -262,10 +265,16 @@ export interface DeltaResult {
   windowSize: number; // active-window events scanned (0 = idle/off-season)
 }
 
-/** Re-ingest the active-window events (few) and merge; report only real changes. */
-export async function fetchDeltas(season: number, current: RawEvent[]): Promise<DeltaResult> {
+/** Re-ingest the active-window events (few) and merge; report only real changes.
+ *  `opts` scopes the window — pass `{ lookbackDays: 0, lookaheadDays: 0 }` for the
+ *  cheap ongoing-only live path; omit for the default ±14/+3-day sweep. */
+export async function fetchDeltas(
+  season: number,
+  current: RawEvent[],
+  opts: { lookbackDays?: number; lookaheadDays?: number } = {},
+): Promise<DeltaResult> {
   const byCode = new Map(current.map((e) => [e.code, e]));
-  const window = await fetchActiveWindow(season);
+  const window = await fetchActiveWindow(season, opts.lookbackDays, opts.lookaheadDays);
 
   const events = [...current];
   const newEvents: string[] = [];

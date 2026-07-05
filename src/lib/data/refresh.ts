@@ -19,6 +19,7 @@ export interface RefreshSummary {
 export interface RefreshMeta {
   lastSyncAt: number; // when a sync last completed (any instance)
   nextCheckAt: number; // don't auto-sync again before this
+  lastWideAt?: number; // when the last wide (±14/+3d) sweep ran
 }
 
 export async function readRefreshMeta(season: number): Promise<RefreshMeta> {
@@ -44,13 +45,22 @@ const NEXT_AFTER_CHANGE_MS = 60_000; // matches ~7-min FTC cycle with headroom
 const NEXT_AFTER_QUIET_MS = 120_000; // active window but nothing changed
 const NEXT_AFTER_IDLE_MS = 30 * 60_000; // no active events (off-season)
 
+// The frequent path scopes to ongoing events only (ftc-scout's Partial); a wider
+// ±14/+3d sweep runs at most this often to catch late score corrections to
+// just-finished events (their daily Full-load analog).
+const WIDE_INTERVAL_MS = 30 * 60_000;
+
 let inFlight = false; // per-instance; cross-instance dupes are idempotent
 
 /**
  * Run one incremental sync. Returns null if a sync is already running in this
- * instance. Updates the shared meta with an adaptive next-check time.
+ * instance. Scope is ongoing-only unless a wide sweep is due (or `opts.wide` is
+ * set — the manual button forces one). Updates the shared meta.
  */
-export async function runRefresh(season: number): Promise<RefreshSummary | null> {
+export async function runRefresh(
+  season: number,
+  opts: { wide?: boolean } = {},
+): Promise<RefreshSummary | null> {
   if (inFlight) return null;
   inFlight = true;
   const t0 = Date.now();
@@ -59,7 +69,15 @@ export async function runRefresh(season: number): Promise<RefreshSummary | null>
     let raw = await getRawEvents(season);
     if (!raw) raw = await fetchAllEvents(season);
 
-    const delta = await fetchDeltas(season, raw);
+    const meta = await readRefreshMeta(season);
+    const wide = opts.wide === true || Date.now() - (meta.lastWideAt ?? 0) > WIDE_INTERVAL_MS;
+
+    // Ongoing-only (cheap, minute-cadence) vs the wider periodic sweep.
+    const delta = await fetchDeltas(
+      season,
+      raw,
+      wide ? {} : { lookbackDays: 0, lookaheadDays: 0 },
+    );
 
     if (delta.changed) {
       // Recompute (EPA is a global replay; OPR/sim/trajectories/world-record/
@@ -72,6 +90,7 @@ export async function runRefresh(season: number): Promise<RefreshSummary | null>
     const now = Date.now();
     await writeRefreshMeta(season, {
       lastSyncAt: now,
+      lastWideAt: wide ? now : (meta.lastWideAt ?? 0),
       nextCheckAt:
         now +
         (delta.changed
