@@ -11,14 +11,35 @@ interface RefreshResult {
   error?: string;
 }
 
-export default function RefreshButton() {
+/** "just now" / "5m ago" / "3h ago" / "2d ago" from an ISO timestamp. */
+function ago(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [pct, setPct] = useState<number | null>(null); // null = bar hidden
+  const [, forceTick] = useState(0); // re-render so "Xm ago" stays current
   const trickle = useRef<number | null>(null);
   const router = useRouter();
 
   useEffect(() => () => { if (trickle.current) clearInterval(trickle.current); }, []);
+  useEffect(() => {
+    const id = window.setInterval(() => forceTick((x) => x + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const updatedLabel = ago(lastUpdated);
 
   function startBar() {
     setPct(8);
@@ -75,6 +96,15 @@ export default function RefreshButton() {
             transition: "width 0.2s ease-out, opacity 0.35s ease-out",
           }}
         />
+      )}
+      {/* Freshness stamp — yields to the transient action message during a refresh */}
+      {!msg && updatedLabel && (
+        <span
+          className="hidden whitespace-nowrap text-[12px] text-[#6b6f78] sm:inline"
+          title={lastUpdated ? `Data last recalculated: ${new Date(lastUpdated).toLocaleString()}` : undefined}
+        >
+          Updated {updatedLabel}
+        </span>
       )}
       <button
         onClick={refresh}

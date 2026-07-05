@@ -103,6 +103,11 @@ export function hasRankings(season: number): boolean {
   return !!file(season);
 }
 
+/** ISO time the derived datasets were last recomputed (set by computeSeasonData). */
+export function getLastUpdated(season: number): string | null {
+  return file(season)?.computedAt ?? null;
+}
+
 /** Lookup a set of teams (for event pages). */
 export function getRankingMap(
   season: number,
