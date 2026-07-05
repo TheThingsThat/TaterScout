@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 // Bump when the raw-crawl schema changes (keeps the old cache from being reused).
-// v7 = sourced from the FIRST API (teams carry homeRegion; no FTCScout OPR).
+// v7 = sourced from the FIRST API (teams carry homeRegion; OPR computed locally).
 const RAW_VERSION = "v7";
 
 const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;

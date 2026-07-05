@@ -38,7 +38,7 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
   // --- OPR (computed locally — FIRST provides none). Per-event final solve over
   //     QUALIFICATION matches only, no-show/uneven matches excluded (playoff
   //     alliances are hand-picked → break OPR additivity). Season value = the
-  //     per-component MAX across a team's events (mirrors FTCScout's quickStats).
+  //     per-component MAX across a team's events (the season leaderboard value).
   const eventFinalOpr = new Map<string, Map<number, Triple>>();
   const seasonOpr = new Map<number, Triple>();
   for (const e of events) {

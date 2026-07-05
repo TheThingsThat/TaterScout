@@ -1,5 +1,5 @@
 /**
- * Full season precompute: crawl all FTCScout events, compute EPA/OPR/sim-model/
+ * Full season precompute: crawl all FIRST API events, compute EPA/OPR/sim-model/
  * trajectories/snapshots, and write the data files the app reads.
  *
  * Usage:  npx tsx scripts/build-epa.ts [season] [--refetch]

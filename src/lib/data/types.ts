@@ -3,7 +3,7 @@
 // route (src/app/api/refresh), so imports here stay relative (tsx-friendly).
 import type { SimModel } from "../predict/model";
 
-// --- Raw crawl shapes (the ingested FTCScout data = our "database") ---
+// --- Raw crawl shapes (the ingested FIRST API data = our "database") ---
 export interface RawMatch {
   key: string; // unique within the dataset: `${eventCode}-${index}` (recomputed on ingest)
   time: number; // ms since epoch (actual or scheduled start)

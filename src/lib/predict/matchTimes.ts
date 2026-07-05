@@ -3,9 +3,8 @@
 // behind their published schedule; we estimate the real "cycle time" from
 // already-played matches and project the remaining ones forward.
 //
-// Self-contained (no app imports) so it runs in the app and in the offline
-// verification script (scripts/verify-predict.ts). Pass qualification matches
-// only — playoffs are bracket/alliance-dependent.
+// Self-contained (no app imports). Pass qualification matches only — playoffs
+// are bracket/alliance-dependent.
 
 export interface SchedMatch {
   key: string;

@@ -20,10 +20,10 @@ export default function EventRankings({
   // Season ratings — fallback when a team/event isn't in the snapshot.
   epa: Map<number, TeamRanking>;
 }) {
-  // Resolve each team's displayed row.
-  //  EPA → post-event snapshot (FTCScout has no EPA), season EPA as fallback.
-  //  OPR → FTCScout's authoritative per-event OPR; computed snapshot / season
-  //        quickStats only as deeper fallbacks (e.g. an event with no stats yet).
+  // Resolve each team's displayed row (all computed by us from FIRST scores).
+  //  EPA → post-event snapshot, season EPA as fallback.
+  //  OPR → the time-aware per-event snapshot, season OPR as a deeper fallback
+  //        (e.g. an event with no stats yet).
   const rowOf = (t: EventTeam) => {
     const s = stats.get(t.teamNumber);
     const qs = t.team.quickStats;

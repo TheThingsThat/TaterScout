@@ -101,7 +101,8 @@ export interface Match {
   scores: MatchScores | null;
 }
 
-/** Per-event OPR from FTCScout (no-penalty, quals-only). */
+/** Per-event OPR (no-penalty, quals-only). Computed by us; may be null on the
+ *  live path where the event page derives OPR from the request's own scores. */
 export interface EventOpr {
   totalPointsNp: number | null;
   autoPoints: number | null;
@@ -114,7 +115,7 @@ export interface EventTeam {
     name: string;
     quickStats: QuickStats | null;
   };
-  // FTCScout's per-event stats (event-scoped, not season).
+  // Per-event stats (event-scoped, not season): rank from FIRST, OPR computed.
   stats: { rank: number | null; opr: EventOpr | null } | null;
 }
 
