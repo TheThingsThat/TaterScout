@@ -53,33 +53,24 @@ The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
    (Or, for a fresh crawl instead of uploading, run `build-epa.ts 2025 --refetch`
    with the FIRST + Blob env vars set — slower, one-time.)
 
-5. **Enable scheduled live updates.** `vercel.json` already declares a cron:
+5. **Enable scheduled live updates** — a minute-cadence trigger for
+   `GET /api/refresh` (which sends `Authorization: Bearer $CRON_SECRET`):
 
-   ```json
-   { "crons": [{ "path": "/api/refresh", "schedule": "* * * * *" }] }
-   ```
+   - **Hobby plan (recommended for this project): use an external trigger** — e.g.
+     [cron-job.org](https://cron-job.org) (free, true 1-minute). Create a job:
+     method **GET**, URL `https://<your-domain>/api/refresh`, schedule **every 1
+     minute**, and add a header `Authorization: Bearer <CRON_SECRET>`. (Do **not**
+     put an every-minute cron in `vercel.json` on Hobby — Vercel rejects the
+     deploy with "Hobby accounts are limited to daily cron jobs.")
+   - **Pro plan: use Vercel's native cron** — add a `vercel.json`:
 
-   - **Pro plan:** Vercel runs this **every minute** — the serverless equivalent
-     of ftc-scout's minute loop. Nothing else to do.
-   - **Hobby plan:** Vercel crons run **once per day only**, so for minute-cadence
-     live updates drive the endpoint from an **external trigger**. Example GitHub
-     Actions workflow (`.github/workflows/refresh.yml`):
-
-     ```yaml
-     on:
-       schedule: [{ cron: "* * * * *" }] # every minute
-     jobs:
-       refresh:
-         runs-on: ubuntu-latest
-         steps:
-           - run: |
-               curl -fsS -X GET "https://<your-domain>/api/refresh" \
-                 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+     ```json
+     { "crons": [{ "path": "/api/refresh", "schedule": "* * * * *" }] }
      ```
 
-     (Add `CRON_SECRET` as a repo secret. cron-job.org works too.)
+     Vercel runs it every minute; no third party needed.
 
-6. **Redeploy.** The app now reads datasets from Blob, the scheduled sync keeps
+6. **Redeploy.** The app now reads datasets from Blob, the scheduled trigger keeps
    them current during events, and the ↻ button forces an immediate full sweep.
 
 ## How data stays fresh
