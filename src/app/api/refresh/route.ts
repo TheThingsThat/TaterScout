@@ -1,5 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { runRefresh } from "@/lib/data/refresh";
+import { NextResponse, type NextRequest, after } from "next/server";
+import { runRefresh, readRefreshMeta } from "@/lib/data/refresh";
 
 // On-demand, never cached; allow up to 60s for a recompute.
 export const dynamic = "force-dynamic";
@@ -33,11 +33,22 @@ export async function GET(req: NextRequest) {
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  try {
-    return summarize(await runRefresh(SEASON));
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
-  }
+  // Respond immediately and sync AFTER the response, so the caller (cron-job.org,
+  // 30s timeout) never waits on ingest/recompute. Self-throttle via the shared
+  // cadence so an every-minute cron only does real work when the store is due.
+  after(async () => {
+    try {
+      const meta = await readRefreshMeta(SEASON);
+      if (Date.now() < meta.nextCheckAt) return; // not due yet — skip cheaply
+      const res = await runRefresh(SEASON);
+      if (res?.changed) {
+        console.log(`[cron refresh] +${res.newMatches} matches in ${res.ms}ms`);
+      }
+    } catch (e) {
+      console.error("[cron refresh]", (e as Error).message);
+    }
+  });
+  return NextResponse.json({ scheduled: true });
 }
 
 /**

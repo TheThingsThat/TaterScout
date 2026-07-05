@@ -2,7 +2,7 @@
 // the derived datasets, persist. Used by the manual /api/refresh route AND the
 // traffic-driven auto-refresh (autoRefresh.ts) so both stay one implementation.
 import { getRawEvents, applyComputed, persist } from "./store";
-import { fetchDeltas, fetchAllEvents } from "./crawl";
+import { fetchDeltas } from "./crawl";
 import { computeSeasonData } from "./compute";
 import { readDataset, writeDataset } from "./storage";
 
@@ -65,9 +65,15 @@ export async function runRefresh(
   inFlight = true;
   const t0 = Date.now();
   try {
-    // Working copy of the ingested events; seed via a full crawl if none exists.
-    let raw = await getRawEvents(season);
-    if (!raw) raw = await fetchAllEvents(season);
+    // Working copy of the ingested events. A serverless request can't do the
+    // ~5-min full crawl, so require the raw cache to be seeded offline
+    // (scripts/seed-blob.ts or build-epa) rather than crawling here.
+    const raw = await getRawEvents(season);
+    if (!raw) {
+      throw new Error(
+        `Raw cache not seeded for season ${season} — run scripts/seed-blob.ts (or build-epa) to populate it.`,
+      );
+    }
 
     const meta = await readRefreshMeta(season);
     const wide = opts.wide === true || Date.now() - (meta.lastWideAt ?? 0) > WIDE_INTERVAL_MS;
