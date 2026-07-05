@@ -46,19 +46,27 @@ interface FTeam {
   rookieYear: number | null;
   homeRegion: string | null;
 }
-interface FMatchTeam {
+// Hybrid schedule row = every scheduled match (future + played), results folded
+// in where available. This is what surfaces UPCOMING matches; /matches is
+// results-only, so it omits them.
+interface FHybridTeam {
   teamNumber: number;
   station: string;
   onField: boolean;
+  teamName: string | null;
 }
-interface FMatch {
-  actualStartTime: string | null;
-  scheduledStartTime: string | null;
-  postResultTime: string | null;
+interface FHybridMatch {
   tournamentLevel: string;
   series: number;
   matchNumber: number;
-  teams: FMatchTeam[];
+  startTime: string | null; // scheduled
+  actualStartTime: string | null;
+  postResultTime: string | null;
+  scoreRedFinal: number | null;
+  scoreRedFoul: number | null;
+  scoreBlueFinal: number | null;
+  scoreBlueFoul: number | null;
+  teams: FHybridTeam[];
 }
 interface FScoreAlliance {
   alliance: "Red" | "Blue";
@@ -191,9 +199,10 @@ async function fetchEventTeamNames(season: number, code: string): Promise<Map<nu
 }
 
 export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
-  const [detailR, matchR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
+  const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
     firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ matches: FMatch[] }>(`${season}/matches/${code}`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
     firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: REVALIDATE }),
     firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: REVALIDATE }),
     firstGet<{ rankings: FRanking[] }>(`${season}/rankings/${code}`, { revalidate: REVALIDATE }),
@@ -217,31 +226,38 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   }
 
   const matches: Match[] = [];
-  for (const m of matchR?.matches ?? []) {
+  for (const m of [...(qualHybR?.schedule ?? []), ...(poHybR?.schedule ?? [])]) {
     if (m.tournamentLevel === "PRACTICE") continue;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
-    const played = !!(sc?.red && sc?.blue);
-    const teams: MatchTeam[] = m.teams.map((t) => ({
-      teamNumber: t.teamNumber,
-      alliance: t.station.startsWith("Red") ? "Red" : "Blue",
-      station: t.station,
-      allianceRole: null,
-      surrogate: false,
-      onField: t.onField,
-    }));
+    const played = !!m.postResultTime || !!(sc?.red && sc?.blue);
+    const teams: MatchTeam[] = m.teams.map((t) => {
+      if (t.teamName && !names.has(t.teamNumber)) names.set(t.teamNumber, t.teamName);
+      return {
+        teamNumber: t.teamNumber,
+        alliance: t.station.startsWith("Red") ? "Red" : "Blue",
+        station: t.station,
+        allianceRole: null,
+        surrogate: false,
+        onField: t.onField,
+      };
+    });
+    // No-penalty totals from the score breakdown when we have it, else the
+    // hybrid's final-minus-foul.
+    const redNp = sc?.red ? sc.red.autoPoints + sc.red.teleopPoints : (m.scoreRedFinal ?? 0) - (m.scoreRedFoul ?? 0);
+    const blueNp = sc?.blue ? sc.blue.autoPoints + sc.blue.teleopPoints : (m.scoreBlueFinal ?? 0) - (m.scoreBlueFoul ?? 0);
     matches.push({
       matchNum: m.matchNumber,
       tournamentLevel: levelOf(m.tournamentLevel),
       series: m.series,
       hasBeenPlayed: played,
-      scheduledStartTime: m.scheduledStartTime,
+      scheduledStartTime: m.startTime,
       actualStartTime: m.actualStartTime,
       postResultTime: m.postResultTime,
       teams,
       scores: played
         ? {
-            red: { totalPoints: sc!.red!.totalPoints, totalPointsNp: sc!.red!.autoPoints + sc!.red!.teleopPoints },
-            blue: { totalPoints: sc!.blue!.totalPoints, totalPointsNp: sc!.blue!.autoPoints + sc!.blue!.teleopPoints },
+            red: { totalPoints: sc?.red?.totalPoints ?? m.scoreRedFinal ?? 0, totalPointsNp: redNp },
+            blue: { totalPoints: sc?.blue?.totalPoints ?? m.scoreBlueFinal ?? 0, totalPointsNp: blueNp },
           }
         : null,
     });
@@ -315,22 +331,23 @@ export interface EventMatchLite {
 }
 
 export async function getEventMatches(season: number, code: string): Promise<EventMatchLite | null> {
-  const [detailR, matchR] = await Promise.all([
+  // Qual hybrid schedule so the "next match" lookup sees UPCOMING (unplayed) quals.
+  const [detailR, qualHybR] = await Promise.all([
     firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ matches: FMatch[] }>(`${season}/matches/${code}`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
   ]);
   const d = detailR?.events?.[0];
   if (!d) return null;
   return {
     timezone: d.timezone ?? "UTC",
-    matches: (matchR?.matches ?? [])
+    matches: (qualHybR?.schedule ?? [])
       .filter((m) => m.tournamentLevel !== "PRACTICE")
       .map((m) => ({
         matchNum: m.matchNumber,
         tournamentLevel: levelOf(m.tournamentLevel),
         series: m.series,
-        hasBeenPlayed: !!m.postResultTime || !!m.actualStartTime,
-        scheduledStartTime: m.scheduledStartTime,
+        hasBeenPlayed: !!m.postResultTime,
+        scheduledStartTime: m.startTime,
         actualStartTime: m.actualStartTime,
         teams: m.teams.map((t) => ({ teamNumber: t.teamNumber })),
       })),
