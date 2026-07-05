@@ -75,6 +75,30 @@ export async function readDataset(name: string): Promise<string | null> {
   }
 }
 
+/** Non-sensitive storage diagnostics (booleans + resolved URLs/paths, no secrets)
+ *  to debug why a dataset won't load. */
+export async function getStorageDiagnostics(): Promise<Record<string, unknown>> {
+  const info: Record<string, unknown> = {
+    backend: blobEnabled() ? "blob" : "file",
+    hasBlobToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+    hasBlobBaseUrl: !!process.env.BLOB_BASE_URL,
+    rawKey: blobKey("raw-2025"),
+  };
+  if (blobEnabled()) {
+    info.rawInStore = (await blobUrl("raw-2025")) ? "found" : "NOT FOUND";
+    info.rankingsInStore = (await blobUrl("rankings-2025")) ? "found" : "NOT FOUND";
+  } else {
+    info.rawLocalPath = localPath("raw-2025");
+    try {
+      readFileSync(localPath("rankings-2025"));
+      info.rankingsFileReadable = true;
+    } catch {
+      info.rankingsFileReadable = false;
+    }
+  }
+  return info;
+}
+
 export async function writeDataset(name: string, content: string): Promise<void> {
   if (blobEnabled()) {
     const { put } = await import("@vercel/blob");
