@@ -11,35 +11,54 @@ interface RefreshResult {
   error?: string;
 }
 
-/** "just now" / "5m ago" / "3h ago" / "2d ago" from an ISO timestamp. */
-function ago(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return null;
-  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+/** "just now" (<5s) / "23s ago" / "5m ago" / "3h ago" / "2d ago" from the client
+ *  time the last sync completed. */
+function agoLabel(syncedAt: number | null): string | null {
+  if (syncedAt == null) return null;
+  const s = Math.max(0, Math.floor((Date.now() - syncedAt) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
-export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | null }) {
+export default function RefreshButton() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [pct, setPct] = useState<number | null>(null); // null = bar hidden
-  const [, forceTick] = useState(0); // re-render so "Xm ago" stays current
+  // Client time the last sync completed (from the status poll or a manual press).
+  const [syncedAt, setSyncedAt] = useState<number | null>(null);
+  const [, forceTick] = useState(0); // re-render so "Xs ago" ticks up
   const trickle = useRef<number | null>(null);
   const router = useRouter();
 
   useEffect(() => () => { if (trickle.current) clearInterval(trickle.current); }, []);
+
+  // Tick every second so the seconds counter stays live.
   useEffect(() => {
-    const id = window.setInterval(() => forceTick((x) => x + 1), 30_000);
+    const id = window.setInterval(() => forceTick((x) => x + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const updatedLabel = ago(lastUpdated);
+  // Poll the freshness probe so background (cron) syncs show up without a reload.
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/status", { cache: "no-store" });
+        const j = (await r.json()) as { secondsAgo: number | null };
+        if (alive && typeof j.secondsAgo === "number") {
+          setSyncedAt(Date.now() - j.secondsAgo * 1000);
+        }
+      } catch {
+        /* ignore — next poll retries */
+      }
+    };
+    poll();
+    const id = window.setInterval(poll, 10_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   function startBar() {
     setPct(8);
@@ -74,10 +93,10 @@ export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | 
           if (j.newMatches) parts.push(`${j.newMatches} match${j.newMatches === 1 ? "" : "es"}`);
           if (j.newEvents) parts.push(`${j.newEvents} new event${j.newEvents === 1 ? "" : "s"}`);
           setMsg(`Added ${parts.join(", ") || "updates"}`);
+          router.refresh(); // pull the changed data into the page
         }
-        // Re-render either way so the "Updated" stamp reflects the store's
-        // current recompute time, not the value baked in at page load.
-        router.refresh();
+        // A sync just completed (changed or not) → stamp resets to "just now".
+        setSyncedAt(Date.now());
       }
     } catch {
       setMsg("Refresh failed");
@@ -87,6 +106,8 @@ export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | 
       window.setTimeout(() => setMsg(null), 4500);
     }
   }
+
+  const updatedLabel = agoLabel(syncedAt);
 
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -105,7 +126,7 @@ export default function RefreshButton({ lastUpdated }: { lastUpdated?: string | 
       {!msg && updatedLabel && (
         <span
           className="hidden whitespace-nowrap text-[12px] text-[#6b6f78] sm:inline"
-          title={lastUpdated ? `Data last recalculated: ${new Date(lastUpdated).toLocaleString()}` : undefined}
+          title="Time since the last data sync"
         >
           Updated {updatedLabel}
         </span>
