@@ -1,10 +1,13 @@
 import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import { getSeasonSnapshot, getWorldRecord } from "@/lib/ftc/queries";
+import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
 import { formatDate } from "@/lib/format";
 
-export const revalidate = 3600;
+// Regenerate at most once a minute; each regeneration also ticks the
+// auto-refresh, so the snapshot/world-record track the store closely.
+export const revalidate = 60;
 
 const SEASON_TITLE = `${seasonName(CURRENT_SEASON)} · ${seasonLabel(CURRENT_SEASON)}`;
 
@@ -128,6 +131,7 @@ async function WorldRecord() {
 }
 
 export default function Home() {
+  scheduleAutoRefresh(CURRENT_SEASON); // post-response staleness check (never blocks)
   return (
     <div>
       {/* Hero */}

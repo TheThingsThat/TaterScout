@@ -6,6 +6,7 @@ import { eventTypeLabel } from "@/lib/ftc/labels";
 import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
 import { ensureLoaded } from "@/lib/data/store";
+import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { formatDate, locationStr } from "@/lib/format";
 import EventRankings from "@/components/EventRankings";
 import MatchList, { matchKey } from "@/components/MatchList";
@@ -17,6 +18,7 @@ import EventResults, { type ResultTeam } from "@/components/EventResults";
 import EventPredictionAccuracy from "@/components/EventPredictionAccuracy";
 import Collapsible from "@/components/Collapsible";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
+import { solveEventOpr, type AllianceObs } from "@/lib/epa/opr";
 import { simulateEvent, type SimTeam } from "@/lib/predict/simulate";
 import { computeSos } from "@/lib/predict/sos";
 import { winProb } from "@/lib/predict/model";
@@ -63,6 +65,7 @@ export default async function EventPage({ params, searchParams }: Props) {
   if (!Number.isInteger(season)) notFound();
 
   await ensureLoaded(season); // hydrate the data store (Blob/file) before sync accessors
+  scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const ev = await getEvent(season, code);
   if (!ev) notFound();
@@ -71,6 +74,38 @@ export default async function EventPage({ params, searchParams }: Props) {
   // Time-aware ratings for THIS event: pre-event EPA (seeds the simulation,
   // no lookahead) and post-event EPA/OPR (shown in the rankings table).
   const evStats = getEventStats(season, code);
+
+  // While an event is live, solve per-event OPR from the scores in THIS request
+  // (exact, zero lag) and inject it into the slot EventRankings prefers first;
+  // the precomputed snapshot (which lags ingest by a minute or two) stays the
+  // source for finished events.
+  if (ev.ongoing) {
+    const obs: AllianceObs[] = [];
+    for (const m of ev.matches) {
+      if (m.tournamentLevel !== "Quals" || !m.hasBeenPlayed || !m.scores) continue;
+      const red = m.teams.filter((t) => t.alliance === "Red" && t.onField).map((t) => t.teamNumber);
+      const blue = m.teams.filter((t) => t.alliance === "Blue" && t.onField).map((t) => t.teamNumber);
+      if (red.length !== 2 || blue.length !== 2) continue; // no-show/uneven: skip
+      const rNp = m.scores.red?.totalPointsNp;
+      const bNp = m.scores.blue?.totalPointsNp;
+      if (rNp == null || bNp == null) continue;
+      const rA = m.scores.red?.autoPoints ?? 0;
+      const bA = m.scores.blue?.autoPoints ?? 0;
+      obs.push({ teams: red, v: [rNp, rA, rNp - rA] });
+      obs.push({ teams: blue, v: [bNp, bA, bNp - bA] });
+    }
+    if (obs.length >= 6) {
+      const live = solveEventOpr(obs);
+      for (const t of ev.teams) {
+        const v = live.get(t.teamNumber);
+        if (v)
+          t.stats = {
+            rank: t.stats?.rank ?? null,
+            opr: { totalPointsNp: v[0], autoPoints: v[1], dcPoints: v[2] },
+          };
+      }
+    }
+  }
 
   // --- Event prediction (Monte-Carlo) ---
   const model = getSimModel(season);

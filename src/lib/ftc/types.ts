@@ -72,6 +72,7 @@ export interface EventSearchResult {
 export interface AllianceSide {
   totalPoints: number | null;
   totalPointsNp: number | null;
+  autoPoints?: number | null; // enables live per-event OPR solves
 }
 
 export interface MatchScores {

@@ -10,6 +10,7 @@ import {
 import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
 import { fmt } from "@/lib/format";
 import { ensureLoaded } from "@/lib/data/store";
+import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import RegionSelect from "@/components/RegionSelect";
 
 export const metadata: Metadata = {
@@ -48,6 +49,7 @@ export default async function RankingsPage({ searchParams }: Props) {
   const page = Math.max(1, Number(sp.page) || 1);
 
   await ensureLoaded(CURRENT_SEASON); // hydrate the data store before sync accessors
+  scheduleAutoRefresh(CURRENT_SEASON); // post-response staleness check (never blocks)
 
   const regions = getRegions(CURRENT_SEASON);
   const { rows, total, page: curPage, pages } = queryRankings(CURRENT_SEASON, {

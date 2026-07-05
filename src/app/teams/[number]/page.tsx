@@ -9,6 +9,7 @@ import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/ranking
 import { getTrajectory } from "@/lib/trajectory";
 import type { QuickStats } from "@/lib/ftc/types";
 import { ensureLoaded } from "@/lib/data/store";
+import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
 import EpaTiles from "@/components/EpaTiles";
@@ -105,6 +106,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
   if (!Number.isInteger(num)) notFound();
 
   await ensureLoaded(season); // hydrate the data store before sync accessors
+  scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const team = await getTeam(num, season);
   if (!team) notFound();

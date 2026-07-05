@@ -259,6 +259,7 @@ export interface DeltaResult {
   newEvents: string[];
   updatedEvents: string[];
   newMatches: number;
+  windowSize: number; // active-window events scanned (0 = idle/off-season)
 }
 
 /** Re-ingest the active-window events (few) and merge; report only real changes. */
@@ -305,5 +306,6 @@ export async function fetchDeltas(season: number, current: RawEvent[]): Promise<
     newEvents,
     updatedEvents,
     newMatches,
+    windowSize: window.length,
   };
 }

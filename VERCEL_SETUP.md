@@ -54,12 +54,35 @@ The data layer (`src/lib/data/storage.ts`) is backend-agnostic:
    (or a future cron) writes to Blob → trajectory, rankings, EPA and event-stats
    update live in production.
 
+## How data stays fresh (no cron needed)
+
+Freshness is **traffic-driven** (`src/lib/data/autoRefresh.ts`): every page view
+schedules a post-response staleness check (Next `after()` — pages never wait on
+it). When the store is due, the shared incremental sync runs: fetch the active
+window from FIRST → if anything changed, recompute EPA/OPR/sim-model/
+trajectories/world-record/search-index → persist to Blob. Cadence adapts:
+
+| State | Sync at most every |
+| --- | --- |
+| results flowing (something changed) | 60s |
+| active window, nothing changed | 120s |
+| no active events (off-season) | 30min |
+
+A `meta-<season>.json` dataset coordinates instances (best-effort lock; a rare
+race just re-runs an idempotent sync). The header ↻ button uses the same runner
+and bypasses the backoff.
+
 ## Notes
 
-- **Freshness:** reads are cached ~60s (HTTP cache + an in-memory TTL), so after a
-  refresh new data appears within ~60s across serverless instances.
-- **Cost/limits:** an *incremental* refresh (a few changed events + recompute) is
-  ~1–2s of compute and fits the function limit. A *cold full crawl* (~1,500 events)
-  should be done via the local `build-epa` seed, not the button.
-- **Auto-updates without the button:** add a **Vercel Cron** (Pro plan; Hobby is
-  daily-only) hitting `POST /api/refresh` every minute — same logic, runs itself.
+- **Freshness:** derived data is at most ~1–2 min behind FIRST while anyone is
+  browsing during an event (dataset reads are cached ~60s per instance on top of
+  the sync cadence). Event pages additionally fetch schedule/scores/ranks live
+  per request, and solve per-event OPR from live scores for ongoing events.
+- **Zero-traffic gap:** with no visitors nothing syncs — the first visitor after
+  a gap gets current-store data instantly and triggers the catch-up in the
+  background. If you want syncing with zero traffic, point any external cron
+  (GitHub Actions schedule, cron-job.org, Vercel Cron on Pro) at
+  `POST /api/refresh`.
+- **Cost/limits:** an *incremental* sync (a few changed events + recompute) is
+  ~1–7s of compute and fits the function limit. A *cold full crawl* (~1,500
+  events) should be done via the local `build-epa` seed, not the button.

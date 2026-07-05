@@ -10,15 +10,17 @@ import path from "node:path";
 // v7 = sourced from the FIRST API (teams carry homeRegion; no FTCScout OPR).
 const RAW_VERSION = "v7";
 
-const useBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;
 
 function dataDir(): string {
   return process.env.VIBESCOUT_DATA_DIR || path.join(process.cwd(), "src", "data");
 }
 
-/** Physical local path for a dataset. Raw crawl → /tmp (+version); computed → data dir. */
+/** Physical local path for a dataset. Raw crawl → /tmp (+version); sync meta →
+ *  /tmp (ephemeral throttle state, not project data); computed → data dir. */
 function localPath(name: string): string {
   if (name.startsWith("raw-")) return `/tmp/vibescout-${name}-${RAW_VERSION}.json`;
+  if (name.startsWith("meta-")) return `/tmp/vibescout-${name}.json`;
   return path.join(dataDir(), `${name}.json`);
 }
 
@@ -50,13 +52,17 @@ async function blobUrl(name: string): Promise<string | null> {
 }
 
 export async function readDataset(name: string): Promise<string | null> {
-  if (useBlob()) {
+  if (blobEnabled()) {
     const url = await blobUrl(name);
     if (!url) return null;
     try {
       // Cache the bytes ~60s; combined with the store's in-memory TTL this bounds
-      // how long after a refresh new data takes to appear.
-      const res = await fetch(url, { next: { revalidate: 60 } });
+      // how long after a refresh new data takes to appear. Sync meta is the
+      // cross-instance coordination signal, so it's always read fresh.
+      const res = await fetch(
+        url,
+        name.startsWith("meta-") ? { cache: "no-store" } : { next: { revalidate: 60 } },
+      );
       return res.ok ? await res.text() : null;
     } catch {
       return null;
@@ -70,7 +76,7 @@ export async function readDataset(name: string): Promise<string | null> {
 }
 
 export async function writeDataset(name: string, content: string): Promise<void> {
-  if (useBlob()) {
+  if (blobEnabled()) {
     const { put } = await import("@vercel/blob");
     await put(blobKey(name), content, {
       access: "public",

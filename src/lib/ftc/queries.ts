@@ -64,8 +64,10 @@ interface FHybridMatch {
   postResultTime: string | null;
   scoreRedFinal: number | null;
   scoreRedFoul: number | null;
+  scoreRedAuto: number | null;
   scoreBlueFinal: number | null;
   scoreBlueFoul: number | null;
+  scoreBlueAuto: number | null;
   teams: FHybridTeam[];
 }
 interface FScoreAlliance {
@@ -256,8 +258,16 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
       teams,
       scores: played
         ? {
-            red: { totalPoints: sc?.red?.totalPoints ?? m.scoreRedFinal ?? 0, totalPointsNp: redNp },
-            blue: { totalPoints: sc?.blue?.totalPoints ?? m.scoreBlueFinal ?? 0, totalPointsNp: blueNp },
+            red: {
+              totalPoints: sc?.red?.totalPoints ?? m.scoreRedFinal ?? 0,
+              totalPointsNp: redNp,
+              autoPoints: sc?.red?.autoPoints ?? m.scoreRedAuto,
+            },
+            blue: {
+              totalPoints: sc?.blue?.totalPoints ?? m.scoreBlueFinal ?? 0,
+              totalPointsNp: blueNp,
+              autoPoints: sc?.blue?.autoPoints ?? m.scoreBlueAuto,
+            },
           }
         : null,
     });
