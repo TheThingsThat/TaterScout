@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getTeam, getEventMatches } from "@/lib/ftc/queries";
 import { CURRENT_SEASON, seasonFull, seasonLabel } from "@/lib/season";
-import { eventTypeLabel, eventTypeWeight, awardLabel } from "@/lib/ftc/labels";
+import { eventTypeLabel, formatAward } from "@/lib/ftc/labels";
 import { formatDate, formatClock, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getTrajectory } from "@/lib/trajectory";
@@ -142,11 +142,8 @@ export default async function TeamPage({ params, searchParams }: Props) {
     ? await findNextMatch(season, num, ongoing)
     : null;
 
-  const events = [...team.events].sort(
-    (a, b) =>
-      eventTypeWeight(a.event.type) - eventTypeWeight(b.event.type) ||
-      b.event.start.localeCompare(a.event.start),
-  );
+  // Chronological, most recent first.
+  const events = [...team.events].sort((a, b) => b.event.start.localeCompare(a.event.start));
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
@@ -323,10 +320,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
                   background: "rgba(255,194,75,0.08)",
                 }}
               >
-                <div className="text-[14px] font-medium">
-                  {awardLabel(a.type)}
-                  {a.placement > 1 ? ` #${a.placement}` : ""}
-                </div>
+                <div className="text-[14px] font-medium">{formatAward(a.type, a.placement)}</div>
                 <Link
                   href={`/events/${season}/${a.eventCode}`}
                   className="mt-0.5 block max-w-[220px] truncate text-[12px] text-[#b89a52] no-underline hover:text-gold"

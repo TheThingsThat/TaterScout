@@ -69,10 +69,10 @@ export default function EventResults({
   return (
     <div className="divide-y divide-[#141414] overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
       {winner.length > 0 && (
-        <Row label="Winner" accent="#ffc24b" bg="rgba(255,194,75,0.12)" teams={winner} captainTag="WAC" season={season} />
+        <Row label="Winning Alliance" accent="#ffc24b" bg="rgba(255,194,75,0.12)" teams={winner} captainTag="WAC" season={season} />
       )}
       {finalist.length > 0 && (
-        <Row label="Finalist" accent="#b6bcc6" bg="rgba(182,188,198,0.1)" teams={finalist} captainTag="FAC" season={season} />
+        <Row label="Finalist Alliance" accent="#b6bcc6" bg="rgba(182,188,198,0.1)" teams={finalist} captainTag="FAC" season={season} />
       )}
       {inspire && (
         <Row label="Inspire" accent="#ff5d6c" bg="rgba(205,14,14,0.14)" teams={[inspire]} season={season} />

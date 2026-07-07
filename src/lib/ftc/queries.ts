@@ -120,11 +120,14 @@ const levelOf = (t: string) => (t === "QUALIFICATION" ? "Quals" : "Playoff");
 
 /** Map a FIRST award name + series to our canonical {type, placement}. */
 function mapAward(name: string, series: number): { type: string; placement: number } {
-  if (/^Inspire/i.test(name)) return { type: "Inspire", placement: series };
-  if (/^Winning Alliance/i.test(name)) return { type: "Winner", placement: series };
-  if (/^Finalist Alliance/i.test(name)) return { type: "Finalist", placement: series };
+  // Drop a championship "<X> Division " prefix so a division win/award reads the
+  // same as a regular one (no special-casing divisions or finals).
+  const n = name.replace(/^.*?\bDivision\s+/i, "");
+  if (/^Inspire/i.test(n)) return { type: "Inspire", placement: series };
+  if (/Winning Alliance/i.test(n)) return { type: "Winner", placement: series };
+  if (/Finalist Alliance/i.test(n)) return { type: "Finalist", placement: series };
   // Other judged awards: strip the "2nd/3rd Place" suffix; series carries place.
-  const base = name.replace(/\s+\d+(st|nd|rd|th)\s+Place$/i, "").trim();
+  const base = n.replace(/\s+\d+(st|nd|rd|th)\s+Place$/i, "").trim();
   return { type: base, placement: series };
 }
 

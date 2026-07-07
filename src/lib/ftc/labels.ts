@@ -61,7 +61,22 @@ export function tournamentLevelLabel(level: string): string {
   }
 }
 
-export function awardLabel(type: string): string {
-  // Award enum values are PascalCase — turn into spaced words.
-  return type.replace(/([a-z])([A-Z])/g, "$1 $2");
+function ord(n: number): string {
+  const v = n % 100;
+  const s = ["th", "st", "nd", "rd"];
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/** Display label for an award (mapAward's {type, placement}):
+ *  - alliance results → "Winning Alliance" / "Finalist Alliance" (no numbering,
+ *    and no division/finals distinction — a win is a win)
+ *  - judged awards → short name + placement, e.g. "Inspire 1st", "Innovate 2nd" */
+export function formatAward(type: string, placement: number): string {
+  if (type === "Winner") return "Winning Alliance";
+  if (type === "Finalist") return "Finalist Alliance";
+  const short = type
+    .replace(/\s*sponsored by.*$/i, "")
+    .replace(/\s*Award\b/i, "")
+    .trim();
+  return placement > 0 ? `${short} ${ord(placement)}` : short;
 }
