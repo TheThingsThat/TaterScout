@@ -19,20 +19,18 @@ function Dashboard() {
   const join = useMutation(api.workspaces.join);
 
   const [cName, setCName] = useState("");
-  const [cEvent, setCEvent] = useState("");
   const [cWho, setCWho] = useState("");
   const [jCode, setJCode] = useState("");
   const [jWho, setJWho] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function onCreate() {
-    if (!cName.trim() || !cEvent.trim() || !cWho.trim()) return;
+    if (!cName.trim() || !cWho.trim()) return;
     setBusy(true);
     try {
       const { workspaceId } = await create({
         name: cName.trim(),
         season: CURRENT_SEASON,
-        eventCode: cEvent.trim(),
         displayName: cWho.trim(),
       });
       toast.success("Workspace created");
@@ -93,7 +91,7 @@ function Dashboard() {
                   </span>
                 </div>
                 <div className="mt-1 text-[12px] text-[#6b6f78]">
-                  {w.eventName ?? w.eventCode} · {w.season}–{(w.season + 1) % 100}
+                  {w.eventName || w.eventCode || "No event yet"} · {w.season}–{(w.season + 1) % 100}
                 </div>
                 {w.role === "admin" && (
                   <div className="mt-3 text-[12px] text-muted">
@@ -114,8 +112,7 @@ function Dashboard() {
         <section className={CARD}>
           <h2 className="mb-3 text-[15px] font-semibold">Create a workspace</h2>
           <div className="space-y-2.5">
-            <input className={INPUT} placeholder="Workspace name (e.g. Scott Division)" value={cName} onChange={(e) => setCName(e.target.value)} />
-            <input className={INPUT} placeholder="Event code (e.g. USFLCMPSCOT)" value={cEvent} onChange={(e) => setCEvent(e.target.value)} />
+            <input className={INPUT} placeholder="Workspace name (e.g. Scott Division scouting)" value={cName} onChange={(e) => setCName(e.target.value)} />
             <input className={INPUT} placeholder="Your name" value={cWho} onChange={(e) => setCWho(e.target.value)} />
             <button onClick={onCreate} disabled={busy} className="w-full rounded-xl bg-accent px-4 py-2.5 text-[15px] font-medium text-white hover:opacity-90 disabled:opacity-60">
               Create

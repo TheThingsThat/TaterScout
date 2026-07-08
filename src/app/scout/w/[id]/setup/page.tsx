@@ -1,40 +1,86 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
+import { formatDate, locationStr } from "@/lib/format";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
+const INPUT =
+  "w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]";
+
+interface EventResult {
+  code: string;
+  season: number;
+  name: string;
+  start: string;
+  type: string;
+  location: { city: string | null; state: string | null; country: string | null };
+}
 
 function Setup({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
   const teams = useQuery(api.teams.list, { workspaceId: id });
+  const setEvent = useMutation(api.workspaces.setEvent);
   const importSnapshot = useMutation(api.events.importSnapshot);
-  const [busy, setBusy] = useState(false);
+
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<EventResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [importingCode, setImportingCode] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
 
   if (data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (data === null || data.member.role !== "admin")
     return <div className={`${CARD} text-sm text-muted`}>Admins only.</div>;
 
   const { workspace } = data;
+  const season = workspace.season;
   const count = teams?.length ?? 0;
+  const hasEvent = !!workspace.eventCode;
 
-  async function runImport() {
-    setBusy(true);
+  function onQuery(v: string) {
+    setQuery(v);
+    if (timer.current) clearTimeout(timer.current);
+    const q = v.trim();
+    timer.current = window.setTimeout(async () => {
+      if (q.length < 2) {
+        setResults([]);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&season=${season}`);
+        const j = await res.json();
+        setResults((j.events ?? []) as EventResult[]);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  }
+
+  async function importCode(code: string, name?: string) {
+    setImportingCode(code);
     try {
-      const res = await fetch(
-        `/api/scout/import?season=${workspace.season}&code=${encodeURIComponent(workspace.eventCode)}`,
-      );
+      if (name !== undefined) await setEvent({ workspaceId: id, eventCode: code, eventName: name });
+      const res = await fetch(`/api/scout/import?season=${season}&code=${encodeURIComponent(code)}`);
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Import failed");
       const r = await importSnapshot({ workspaceId: id, teams: j.teams, matches: j.matches });
-      toast.success(`Imported ${r.teams} teams and ${r.matches} qual matches`);
+      toast.success(`Imported ${name ?? code}: ${r.teams} teams, ${r.matches} matches`);
+      setQuery("");
+      setResults([]);
+      setChanging(false);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      setImportingCode(null);
     }
   }
 
@@ -43,37 +89,79 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
       <div>
         <h2 className="text-[18px] font-semibold">Event setup</h2>
         <p className="mt-1 text-[14px] text-muted">
-          Import <span className="font-mono text-foreground">{workspace.eventCode}</span> from the
-          FIRST API — teams, rank, EPA/OPR, and the qualification schedule with TaterScout&apos;s
-          predicted start times.
+          Search for your event and import it — teams, rank, EPA/OPR, and the qual schedule with
+          TaterScout&apos;s predicted times.
         </p>
       </div>
 
-      <div className={CARD}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      {hasEvent && !changing ? (
+        <div className={`${CARD} flex flex-wrap items-center justify-between gap-3`}>
           <div className="text-[14px] text-muted">
-            {count > 0 ? (
-              <>
-                <span className="font-semibold text-foreground">{count}</span> teams currently
-                imported. Re-importing refreshes stats + schedule (match reports are kept).
-              </>
+            <span className="font-semibold text-foreground">{workspace.eventName || workspace.eventCode}</span>{" "}
+            · {count} teams imported
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => importCode(workspace.eventCode)}
+              disabled={importingCode != null}
+              className="rounded-xl border border-[#232323] px-3.5 py-2 text-[13px] text-muted hover:border-[#3a3a3a] hover:text-foreground disabled:opacity-60"
+            >
+              {importingCode ? "Importing…" : "Re-import"}
+            </button>
+            <button
+              onClick={() => setChanging(true)}
+              className="rounded-xl border border-[#232323] px-3.5 py-2 text-[13px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+            >
+              Change event
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            placeholder="Search events by name or code…"
+            className={INPUT}
+          />
+          {changing && (
+            <button onClick={() => setChanging(false)} className="text-[13px] text-muted hover:text-foreground">
+              ← keep {workspace.eventName || workspace.eventCode}
+            </button>
+          )}
+          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+            {searching ? (
+              <div className="px-4 py-6 text-center text-sm text-muted">Searching…</div>
+            ) : results.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted">
+                {query.trim().length < 2 ? "Type an event name or code." : "No matching events."}
+              </div>
             ) : (
-              "Nothing imported yet."
+              results.map((ev) => (
+                <button
+                  key={ev.code}
+                  onClick={() => importCode(ev.code, ev.name)}
+                  disabled={importingCode != null}
+                  className="flex w-full items-center justify-between gap-3 border-t border-[#141414] px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-[#101010] disabled:opacity-60"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-[#e7eaf0]">{ev.name}</div>
+                    <div className="truncate text-[12px] text-[#6b6f78]">
+                      {ev.code}
+                      {locationStr(ev.location) ? ` · ${locationStr(ev.location)}` : ""}
+                      {ev.start ? ` · ${formatDate(ev.start)}` : ""}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[12px] text-accent">
+                    {importingCode === ev.code ? "importing…" : "Import →"}
+                  </span>
+                </button>
+              ))
             )}
           </div>
-          <button
-            onClick={runImport}
-            disabled={busy}
-            className="rounded-xl bg-accent px-4 py-2.5 text-[15px] font-medium text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? "Importing…" : count > 0 ? "Re-import" : "Import event"}
-          </button>
         </div>
-      </div>
-
-      <p className="text-[12px] text-[#6b6f78]">
-        Note: predicted times only appear once FIRST publishes the schedule for the event.
-      </p>
+      )}
     </div>
   );
 }

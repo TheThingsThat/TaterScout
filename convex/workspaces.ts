@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { requireAdmin } from "./lib";
 import type { Id } from "./_generated/dataModel";
 
 // Unambiguous join code (no 0/O/1/I).
@@ -11,13 +12,12 @@ function makeJoinCode(len = 6): string {
   return out;
 }
 
-/** Create a workspace (event board). The creator becomes admin. */
+/** Create a workspace. The creator becomes admin; the event is chosen later
+ *  (searched + imported in Setup). */
 export const create = mutation({
   args: {
     name: v.string(),
     season: v.number(),
-    eventCode: v.string(),
-    eventName: v.optional(v.string()),
     displayName: v.string(),
   },
   handler: async (ctx, args) => {
@@ -36,8 +36,7 @@ export const create = mutation({
     const workspaceId = await ctx.db.insert("workspaces", {
       name: args.name,
       season: args.season,
-      eventCode: args.eventCode.toUpperCase(),
-      eventName: args.eventName,
+      eventCode: "", // set later via setEvent (Setup screen)
       joinCode,
       adminUserId: userId,
       createdAt: Date.now(),
@@ -51,6 +50,19 @@ export const create = mutation({
     // The admin's "primary" board.
     await ctx.db.insert("picklists", { workspaceId, owner: "primary" });
     return { workspaceId, joinCode };
+  },
+});
+
+/** Set (or change) the workspace's event — admin only. */
+export const setEvent = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    eventCode: v.string(),
+    eventName: v.optional(v.string()),
+  },
+  handler: async (ctx, { workspaceId, eventCode, eventName }) => {
+    await requireAdmin(ctx, workspaceId);
+    await ctx.db.patch(workspaceId, { eventCode: eventCode.trim().toUpperCase(), eventName });
   },
 });
 

@@ -30,7 +30,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
       <div>
         <h1 className="text-[24px] font-semibold tracking-[-0.01em]">{workspace.name}</h1>
         <p className="mt-1 text-[14px] text-muted">
-          {workspace.eventName ?? workspace.eventCode} · you are{" "}
+          {workspace.eventName || workspace.eventCode || "No event yet"} · you are{" "}
           <span className="text-foreground">{member.name}</span> ({member.role})
         </p>
         {member.role === "admin" && (
