@@ -117,20 +117,24 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
     router.push(href);
   }
 
-  // A numeric query gets an instant "Team N" result at the top (no API wait).
+  // A numeric query gets an instant "Team N" option while the API is still
+  // loading. Once results are in, we trust them: a real team shows as a hit; a
+  // number with no match falls through to the "not found" state below.
   const term = q.trim();
   const numericHref = /^\d{1,6}$/.test(term) ? `/teams/${term}` : null;
-  const results: Flat[] = numericHref
-    ? [
-        { kind: "team", href: numericHref, primary: `Team ${term}`, secondary: "Go to team →" },
-        ...hits.filter((h) => h.href !== numericHref),
-      ]
-    : hits;
+  const results: Flat[] =
+    numericHref && loading
+      ? [
+          { kind: "team", href: numericHref, primary: `Team ${term}`, secondary: "Go to team →" },
+          ...hits.filter((h) => h.href !== numericHref),
+        ]
+      : hits;
+  const notFound = !loading && term.length >= 2 && results.length === 0;
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") {
       if (results[active]) go(results[active].href);
-      else if (numericHref) go(numericHref);
+      else if (numericHref && loading) go(numericHref);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => Math.min(a + 1, results.length - 1));
@@ -186,7 +190,15 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
           className="ts-scroll absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-[18px] border border-[#232323] bg-[#0a0a0a] text-left shadow-[0_24px_60px_rgba(0,0,0,0.7)]"
           style={{ maxHeight: 360, overflowY: "auto" }}
         >
-          {results.length === 0 && !loading ? (
+          {notFound ? (
+            <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">
+              {numericHref ? (
+                <>Team <span className="font-mono text-foreground">{term}</span> not found.</>
+              ) : (
+                <>No team or event found for &ldquo;<span className="text-foreground">{term}</span>&rdquo;.</>
+              )}
+            </div>
+          ) : results.length === 0 && !loading ? (
             <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">No results.</div>
           ) : (
             <ul className="py-0">

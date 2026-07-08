@@ -2,7 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireMember } from "./lib";
 
-/** Team list for the event: imported stats + match-report count + primary tier. */
+/** Team list for the event: imported stats + match-report count + pit status. */
 export const list = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
@@ -18,19 +18,6 @@ export const list = query({
     const reportCount = new Map<number, number>();
     for (const r of reports) reportCount.set(r.teamNumber, (reportCount.get(r.teamNumber) ?? 0) + 1);
 
-    const primary = await ctx.db
-      .query("picklists")
-      .withIndex("by_workspace_owner", (q) => q.eq("workspaceId", workspaceId).eq("owner", "primary"))
-      .unique();
-    const tierByTeam = new Map<number, string>();
-    if (primary) {
-      const entries = await ctx.db
-        .query("picklistEntries")
-        .withIndex("by_picklist", (q) => q.eq("picklistId", primary._id))
-        .collect();
-      for (const e of entries) tierByTeam.set(e.teamNumber, e.tier);
-    }
-
     const pits = await ctx.db
       .query("pitReports")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
@@ -41,7 +28,6 @@ export const list = query({
       .map((t) => ({
         ...t,
         reportCount: reportCount.get(t.teamNumber) ?? 0,
-        tier: tierByTeam.get(t.teamNumber) ?? "uncat",
         pitScouted: pitByTeam.has(t.teamNumber),
         robotStatus: pitByTeam.get(t.teamNumber)?.robotStatus ?? null,
       }))
@@ -78,10 +64,14 @@ export const detail = query({
     const n = reports.length;
     const mean = (f: (r: (typeof reports)[number]) => number) =>
       n ? reports.reduce((s, r) => s + f(r), 0) / n : 0;
-    const parkDist: Record<string, number> = { none: 0, simple: 0, tilt: 0, climb: 0 };
+    const autoZoneDist: Record<string, number> = { far: 0, near: 0, none: 0 };
+    const teleopZoneDist: Record<string, number> = { far: 0, near: 0, none: 0 };
+    const endgameDist: Record<string, number> = { park: 0, tilt: 0, climb: 0, none: 0 };
     const tagFreq: Record<string, number> = {};
     for (const r of reports) {
-      parkDist[r.park] = (parkDist[r.park] ?? 0) + 1;
+      autoZoneDist[r.autoZone] = (autoZoneDist[r.autoZone] ?? 0) + 1;
+      teleopZoneDist[r.teleopZone] = (teleopZoneDist[r.teleopZone] ?? 0) + 1;
+      endgameDist[r.endgame] = (endgameDist[r.endgame] ?? 0) + 1;
       for (const tag of r.tags) tagFreq[tag] = (tagFreq[tag] ?? 0) + 1;
     }
 
@@ -94,7 +84,9 @@ export const detail = query({
             count: n,
             autoArtifacts: mean((r) => r.autoArtifacts),
             teleopArtifacts: mean((r) => r.teleopArtifacts),
-            parkDist,
+            autoZoneDist,
+            teleopZoneDist,
+            endgameDist,
             tagFreq,
           }
         : null,

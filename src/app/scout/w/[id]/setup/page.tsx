@@ -24,6 +24,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
   const teams = useQuery(api.teams.list, { workspaceId: id });
   const setEvent = useMutation(api.workspaces.setEvent);
+  const setMyTeam = useMutation(api.workspaces.setMyTeam);
   const importSnapshot = useMutation(api.events.importSnapshot);
 
   const [query, setQuery] = useState("");
@@ -31,6 +32,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   const [searching, setSearching] = useState(false);
   const [importingCode, setImportingCode] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
+  const [teamQuery, setTeamQuery] = useState("");
   const timer = useRef<number | undefined>(undefined);
 
   if (data === undefined) return <div className="text-sm text-muted">Loading…</div>;
@@ -41,6 +43,14 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   const season = workspace.season;
   const count = teams?.length ?? 0;
   const hasEvent = !!workspace.eventCode;
+  const myTeam = workspace.myTeam ?? null;
+  const teamMatches = teamQuery.trim()
+    ? (teams ?? [])
+        .filter((t) =>
+          `${t.teamNumber} ${t.name}`.toLowerCase().includes(teamQuery.trim().toLowerCase()),
+        )
+        .slice(0, 8)
+    : [];
 
   function onQuery(v: string) {
     setQuery(v);
@@ -160,6 +170,58 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {hasEvent && count > 0 && (
+        <div className={CARD}>
+          <h3 className="text-[15px] font-semibold">Your team</h3>
+          <p className="mt-1 text-[13px] text-muted">
+            Which team are you scouting for? Drives the &quot;Up next&quot; card on the overview.
+          </p>
+          {myTeam != null ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="rounded-lg bg-accent/15 px-2.5 py-1 font-mono text-[14px] font-bold text-accent">
+                {myTeam}
+              </span>
+              <span className="text-[14px] text-muted">
+                {(teams ?? []).find((t) => t.teamNumber === myTeam)?.name ?? ""}
+              </span>
+              <button
+                onClick={() => setMyTeam({ workspaceId: id, teamNumber: null })}
+                className="ml-auto text-[13px] text-muted hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <input
+                value={teamQuery}
+                onChange={(e) => setTeamQuery(e.target.value)}
+                placeholder="Search your team by number or name…"
+                className={INPUT}
+              />
+              {teamMatches.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-[#1f1f1f]">
+                  {teamMatches.map((t) => (
+                    <button
+                      key={t.teamNumber}
+                      onClick={async () => {
+                        await setMyTeam({ workspaceId: id, teamNumber: t.teamNumber });
+                        setTeamQuery("");
+                        toast.success(`You're scouting for ${t.teamNumber}`);
+                      }}
+                      className="flex w-full items-center gap-2 border-t border-[#141414] px-3.5 py-2.5 text-left first:border-t-0 hover:bg-[#101010]"
+                    >
+                      <span className="font-mono text-[13px] text-muted">{t.teamNumber}</span>
+                      <span className="truncate text-[14px] text-foreground">{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

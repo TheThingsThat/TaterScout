@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireAdmin } from "./lib";
@@ -47,13 +48,37 @@ export const create = mutation({
       name: args.displayName,
       role: "admin",
     });
-    // The admin's "primary" board.
-    await ctx.db.insert("picklists", { workspaceId, owner: "primary" });
     return { workspaceId, joinCode };
   },
 });
 
-/** Set (or change) the workspace's event — admin only. */
+/** Delete every scouting doc for a workspace (used when the event changes). */
+async function clearScoutingData(ctx: MutationCtx, workspaceId: Id<"workspaces">) {
+  const reports = await ctx.db
+    .query("matchReports")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  const pits = await ctx.db
+    .query("pitReports")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  const claims = await ctx.db
+    .query("matchClaims")
+    .withIndex("by_workspace_match_team", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  const assigns = await ctx.db
+    .query("assignments")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  const shorts = await ctx.db
+    .query("shortlist")
+    .withIndex("by_workspace_member", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const r of [...reports, ...pits, ...claims, ...assigns, ...shorts]) await ctx.db.delete(r._id);
+}
+
+/** Set (or change) the workspace's event — admin only. Changing the event code
+ *  wipes the workspace's scouting data (it belonged to the old event). */
 export const setEvent = mutation({
   args: {
     workspaceId: v.id("workspaces"),
@@ -62,7 +87,32 @@ export const setEvent = mutation({
   },
   handler: async (ctx, { workspaceId, eventCode, eventName }) => {
     await requireAdmin(ctx, workspaceId);
-    await ctx.db.patch(workspaceId, { eventCode: eventCode.trim().toUpperCase(), eventName });
+    const ws = await ctx.db.get(workspaceId);
+    const next = eventCode.trim().toUpperCase();
+    if (ws && ws.eventCode && ws.eventCode !== next) {
+      await clearScoutingData(ctx, workspaceId);
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName, myTeam: undefined });
+    } else {
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName });
+    }
+  },
+});
+
+/** Set which team this workspace scouts for (drives the Overview "Up next"). */
+export const setMyTeam = mutation({
+  args: { workspaceId: v.id("workspaces"), teamNumber: v.union(v.number(), v.null()) },
+  handler: async (ctx, { workspaceId, teamNumber }) => {
+    await requireAdmin(ctx, workspaceId);
+    await ctx.db.patch(workspaceId, { myTeam: teamNumber ?? undefined });
+  },
+});
+
+/** Toggle free-scout mode: when on, scouts may scout any match/team (like admin). */
+export const setFreeScoutMode = mutation({
+  args: { workspaceId: v.id("workspaces"), on: v.boolean() },
+  handler: async (ctx, { workspaceId, on }) => {
+    await requireAdmin(ctx, workspaceId);
+    await ctx.db.patch(workspaceId, { freeScoutMode: on });
   },
 });
 
@@ -82,14 +132,12 @@ export const join = mutation({
       .withIndex("by_workspace_user", (q) => q.eq("workspaceId", ws._id).eq("userId", userId))
       .unique();
     if (existing) return { workspaceId: ws._id };
-    const memberId = await ctx.db.insert("members", {
+    await ctx.db.insert("members", {
       workspaceId: ws._id,
       userId,
       name: args.displayName,
       role: "scout",
     });
-    // Each scout gets a personal pick-list board.
-    await ctx.db.insert("picklists", { workspaceId: ws._id, owner: memberId });
     return { workspaceId: ws._id };
   },
 });

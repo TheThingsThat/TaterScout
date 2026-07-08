@@ -19,6 +19,8 @@ export default defineSchema({
     joinCode: v.string(), // scouts join with this
     adminUserId: v.id("users"), // creator
     createdAt: v.number(),
+    myTeam: v.optional(v.number()), // the team this workspace scouts for (Up next)
+    freeScoutMode: v.optional(v.boolean()), // scouts can scout any match, not just assigned
   }).index("by_joinCode", ["joinCode"]),
 
   // Membership of a user in a workspace, with role.
@@ -54,6 +56,7 @@ export default defineSchema({
     red: v.array(v.number()),
     blue: v.array(v.number()),
     predictedTime: v.union(v.number(), v.null()), // ms epoch
+    actualStartTime: v.optional(v.union(v.number(), v.null())), // ms epoch, once played
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_match", ["workspaceId", "matchNumber"]),
@@ -73,22 +76,20 @@ export default defineSchema({
     matchNumber: v.number(),
     teamNumber: v.number(),
     memberId: v.id("members"),
-    // Autonomous
-    autoNearZone: v.boolean(),
-    autoFarZone: v.boolean(),
+    // Autonomous — zone is a single mutually-exclusive choice.
+    autoZone: v.union(v.literal("far"), v.literal("near"), v.literal("none")),
     autoLeave: v.boolean(),
     autoUndisrupted: v.boolean(),
     autoArtifacts: v.number(), // stepper count
     // Teleop
-    teleopNearZone: v.boolean(),
-    teleopFarZone: v.boolean(),
+    teleopZone: v.union(v.literal("far"), v.literal("near"), v.literal("none")),
     teleopArtifacts: v.number(), // stepper count
-    // Endgame
-    park: v.union(
-      v.literal("none"),
-      v.literal("simple"),
+    // Endgame — single mutually-exclusive choice.
+    endgame: v.union(
+      v.literal("park"),
       v.literal("tilt"),
       v.literal("climb"),
+      v.literal("none"),
     ),
     // Robot status
     malfunctions: v.array(v.string()), // drivetrain | turret | intake | shooter
@@ -101,6 +102,7 @@ export default defineSchema({
     .index("by_workspace_match", ["workspaceId", "matchNumber"]),
 
   // Pit scouting: one report per team (what the robot appears capable of).
+  // Same vocabulary as match scouting, but capability is multi-select.
   pitReports: defineTable({
     workspaceId: v.id("workspaces"),
     teamNumber: v.number(),
@@ -109,8 +111,9 @@ export default defineSchema({
     farTele: v.boolean(),
     nearAuto: v.boolean(),
     nearTele: v.boolean(),
-    canFullPark: v.boolean(),
-    canTiltPark: v.boolean(),
+    canPark: v.boolean(),
+    canTilt: v.boolean(),
+    canClimb: v.boolean(),
     robotStatus: v.union(v.literal("full"), v.literal("minor"), v.literal("major")),
     notes: v.optional(v.string()),
     updatedAt: v.number(),
@@ -118,27 +121,27 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_team", ["workspaceId", "teamNumber"]),
 
-  // Pick-list board. owner = "primary" (admin board) or a member id (personal).
-  picklists: defineTable({
+  // Admin-delegated scouting assignments. kind="match" carries a matchNumber;
+  // kind="pit" is per-team (no match). `rank` orders a scout's own list.
+  assignments: defineTable({
     workspaceId: v.id("workspaces"),
-    owner: v.union(v.literal("primary"), v.id("members")),
+    kind: v.union(v.literal("match"), v.literal("pit")),
+    memberId: v.id("members"),
+    teamNumber: v.number(),
+    matchNumber: v.optional(v.number()),
+    rank: v.optional(v.number()),
   })
     .index("by_workspace", ["workspaceId"])
-    .index("by_workspace_owner", ["workspaceId", "owner"]),
+    .index("by_workspace_kind", ["workspaceId", "kind"])
+    .index("by_workspace_member", ["workspaceId", "memberId"])
+    .index("by_workspace_kind_match_team", ["workspaceId", "kind", "matchNumber", "teamNumber"]),
 
-  picklistEntries: defineTable({
+  // A member's private shortlist (manual add + drag rank), separate from the
+  // filter/sort ranking view.
+  shortlist: defineTable({
     workspaceId: v.id("workspaces"),
-    picklistId: v.id("picklists"),
+    memberId: v.id("members"),
     teamNumber: v.number(),
-    tier: v.union(
-      v.literal("t1"),
-      v.literal("t2"),
-      v.literal("t3"),
-      v.literal("dnp"),
-      v.literal("uncat"),
-    ),
-    rank: v.number(), // order within its column
-  })
-    .index("by_picklist", ["picklistId"])
-    .index("by_picklist_tier", ["picklistId", "tier"]),
+    rank: v.number(),
+  }).index("by_workspace_member", ["workspaceId", "memberId"]),
 });

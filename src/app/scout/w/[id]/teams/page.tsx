@@ -5,20 +5,6 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
-const TIER_LABEL: Record<string, string> = {
-  t1: "Tier 1",
-  t2: "Tier 2",
-  t3: "Tier 3",
-  dnp: "Do Not Pick",
-  uncat: "—",
-};
-const TIER_CLASS: Record<string, string> = {
-  t1: "bg-teal/15 text-teal",
-  t2: "bg-[#2f8bff]/15 text-[#4d8dff]",
-  t3: "bg-gold/15 text-gold",
-  dnp: "bg-accent/15 text-accent",
-  uncat: "bg-[#161616] text-[#6b6f78]",
-};
 const fmt = (x: number | null | undefined) => (x == null ? "—" : x.toFixed(1));
 const PIT_CLASS: Record<string, string> = { full: "text-teal", minor: "text-gold", major: "text-accent" };
 const PIT_LABEL: Record<string, string> = { full: "OK", minor: "minor", major: "major" };
@@ -91,8 +77,9 @@ function DetailModal({
                   {detail.pit.nearTele && <span className="rounded bg-surface px-2 py-1 text-foreground">near teleop</span>}
                   {detail.pit.farAuto && <span className="rounded bg-surface px-2 py-1 text-foreground">far auto</span>}
                   {detail.pit.farTele && <span className="rounded bg-surface px-2 py-1 text-foreground">far teleop</span>}
-                  {detail.pit.canFullPark && <span className="rounded bg-surface px-2 py-1 text-foreground">full park</span>}
-                  {detail.pit.canTiltPark && <span className="rounded bg-surface px-2 py-1 text-foreground">tilt park</span>}
+                  {detail.pit.canPark && <span className="rounded bg-surface px-2 py-1 text-foreground">park</span>}
+                  {detail.pit.canTilt && <span className="rounded bg-surface px-2 py-1 text-foreground">tilt</span>}
+                  {detail.pit.canClimb && <span className="rounded bg-surface px-2 py-1 text-foreground">climb</span>}
                 </div>
                 <div className={`mt-1.5 text-[12px] ${PIT_CLASS[detail.pit.robotStatus]}`}>
                   Robot: {PIT_LABEL[detail.pit.robotStatus]}
@@ -115,12 +102,31 @@ function DetailModal({
                     TeleOp artifacts <span className="float-right font-semibold">{detail.averages.teleopArtifacts.toFixed(1)}</span>
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                  {(["none", "simple", "tilt", "climb"] as const).map((p) => (
-                    <span key={p} className="rounded bg-surface px-2 py-1 text-muted">
-                      {p}: <span className="text-foreground">{detail.averages!.parkDist[p] ?? 0}</span>
-                    </span>
-                  ))}
+                <div className="mt-2 space-y-1.5 text-[11px]">
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="w-14 text-[#6b6f78]">Auto</span>
+                    {(["far", "near", "none"] as const).map((z) => (
+                      <span key={z} className="rounded bg-surface px-2 py-1 text-muted">
+                        {z}: <span className="text-foreground">{detail.averages!.autoZoneDist[z] ?? 0}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="w-14 text-[#6b6f78]">TeleOp</span>
+                    {(["far", "near", "none"] as const).map((z) => (
+                      <span key={z} className="rounded bg-surface px-2 py-1 text-muted">
+                        {z}: <span className="text-foreground">{detail.averages!.teleopZoneDist[z] ?? 0}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="w-14 text-[#6b6f78]">Endgame</span>
+                    {(["park", "tilt", "climb", "none"] as const).map((p) => (
+                      <span key={p} className="rounded bg-surface px-2 py-1 text-muted">
+                        {p}: <span className="text-foreground">{detail.averages!.endgameDist[p] ?? 0}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 {Object.keys(detail.averages.tagFreq).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -147,7 +153,7 @@ function DetailModal({
                     <div key={r._id} className="flex items-center justify-between rounded-lg bg-surface px-3 py-2 text-[13px]">
                       <span className="font-mono text-muted">Q{r.matchNumber}</span>
                       <span className="text-[12px] text-muted">
-                        auto {r.autoArtifacts} · tele {r.teleopArtifacts} · {r.park}
+                        auto {r.autoArtifacts} · tele {r.teleopArtifacts} · {r.endgame}
                       </span>
                     </div>
                   ))}
@@ -199,9 +205,6 @@ function Teams({ id }: { id: Id<"workspaces"> }) {
               {t.pitScouted ? `pit ${PIT_LABEL[t.robotStatus ?? "full"]}` : "no pit"}
             </span>
             <span className="shrink-0 text-[12px] text-muted">{t.reportCount} rpt</span>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${TIER_CLASS[t.tier]}`}>
-              {TIER_LABEL[t.tier]}
-            </span>
           </button>
         ))}
       </div>

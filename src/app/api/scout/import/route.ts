@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
     predictedTime:
       predicted.get(`${m.matchNum}`) ??
       (m.scheduledStartTime ? Date.parse(m.scheduledStartTime) : null),
+    actualStartTime: m.actualStartTime ? Date.parse(m.actualStartTime) : null,
   }));
 
   return NextResponse.json({ eventName: ev.name, teams, matches });

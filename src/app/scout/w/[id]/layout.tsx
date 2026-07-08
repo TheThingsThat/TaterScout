@@ -16,9 +16,10 @@ function Tabs({ id }: { id: Id<"workspaces"> }) {
     { href: base, label: "Overview", exact: true },
     ...(isAdmin ? [{ href: `${base}/setup`, label: "Setup" }] : []),
     { href: `${base}/teams`, label: "Teams" },
-    { href: `${base}/pit`, label: "Pit" },
     { href: `${base}/match`, label: "Match" },
+    { href: `${base}/pit`, label: "Pit" },
     { href: `${base}/picklist`, label: "Pick list" },
+    ...(isAdmin ? [{ href: `${base}/members`, label: "Members" }] : []),
   ];
   return (
     <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-[#161616]">

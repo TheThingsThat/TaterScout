@@ -56,8 +56,9 @@ function PitFormInner({
   const [farTele, setFarTele] = useState(initial?.farTele ?? false);
   const [nearAuto, setNearAuto] = useState(initial?.nearAuto ?? false);
   const [nearTele, setNearTele] = useState(initial?.nearTele ?? false);
-  const [canFullPark, setCanFullPark] = useState(initial?.canFullPark ?? false);
-  const [canTiltPark, setCanTiltPark] = useState(initial?.canTiltPark ?? false);
+  const [canPark, setCanPark] = useState(initial?.canPark ?? false);
+  const [canTilt, setCanTilt] = useState(initial?.canTilt ?? false);
+  const [canClimb, setCanClimb] = useState(initial?.canClimb ?? false);
   const [robotStatus, setRobotStatus] = useState<RobotStatus>(initial?.robotStatus ?? "full");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -67,7 +68,7 @@ function PitFormInner({
     try {
       await upsert({
         workspaceId, teamNumber,
-        farAuto, farTele, nearAuto, nearTele, canFullPark, canTiltPark, robotStatus,
+        farAuto, farTele, nearAuto, nearTele, canPark, canTilt, canClimb, robotStatus,
         notes: notes || undefined,
       });
       toast.success(`Saved pit scout · ${teamNumber}`);
@@ -92,10 +93,11 @@ function PitFormInner({
       </section>
 
       <section>
-        <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Park capability</div>
-        <div className="grid grid-cols-2 gap-2">
-          <Toggle on={canFullPark} onClick={() => setCanFullPark(!canFullPark)}>Can full park</Toggle>
-          <Toggle on={canTiltPark} onClick={() => setCanTiltPark(!canTiltPark)}>Can tilt park</Toggle>
+        <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Endgame capability</div>
+        <div className="grid grid-cols-3 gap-2">
+          <Toggle on={canPark} onClick={() => setCanPark(!canPark)}>Park</Toggle>
+          <Toggle on={canTilt} onClick={() => setCanTilt(!canTilt)}>Tilt</Toggle>
+          <Toggle on={canClimb} onClick={() => setCanClimb(!canClimb)}>Climb</Toggle>
         </div>
       </section>
 
@@ -146,9 +148,11 @@ const STATUS_CLASS: Record<string, string> = { full: "text-teal", minor: "text-g
 
 function Pit({ id }: { id: Id<"workspaces"> }) {
   const teams = useQuery(api.teams.list, { workspaceId: id });
+  const data = useQuery(api.workspaces.get, { workspaceId: id });
+  const mine = useQuery(api.assignments.mySchedule, { workspaceId: id });
   const [selected, setSelected] = useState<number | null>(null);
 
-  if (teams === undefined) return <div className="text-sm text-muted">Loading…</div>;
+  if (teams === undefined || data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teams.length === 0)
     return (
       <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
@@ -156,16 +160,26 @@ function Pit({ id }: { id: Id<"workspaces"> }) {
       </div>
     );
 
-  const scouted = teams.filter((t) => t.pitScouted).length;
+  const canSeeAll = data?.member.role === "admin" || !!data?.workspace.freeScoutMode;
+  const assignedPit = new Set((mine?.pit ?? []).map((a) => a.teamNumber));
+  const visibleTeams = canSeeAll ? teams : teams.filter((t) => assignedPit.has(t.teamNumber));
+  const scouted = visibleTeams.filter((t) => t.pitScouted).length;
+
+  if (!canSeeAll && visibleTeams.length === 0)
+    return (
+      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+        No pit teams assigned to you yet. An admin assigns pit scouting on the Members page.
+      </div>
+    );
 
   return (
     <div>
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-[18px] font-semibold">Pit scouting</h2>
-        <span className="text-[13px] text-muted">{scouted}/{teams.length} scouted</span>
+        <h2 className="text-[18px] font-semibold">Pit scouting{!canSeeAll ? " · assigned" : ""}</h2>
+        <span className="text-[13px] text-muted">{scouted}/{visibleTeams.length} scouted</span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {teams.map((t) => (
+        {visibleTeams.map((t) => (
           <button
             key={t._id}
             onClick={() => setSelected(t.teamNumber)}
