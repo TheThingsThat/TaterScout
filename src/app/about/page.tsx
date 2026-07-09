@@ -26,7 +26,8 @@ export default function AboutPage() {
         TaterScout pulls FIRST Tech Challenge data into a single scouting
         dashboard so you don&apos;t have to juggle multiple sites — team ratings
         (EPA &amp; OPR), world rankings, event results, season trajectories,
-        Monte-Carlo predictions, and strength of schedule, all in one place.
+        Monte-Carlo predictions, and strength of schedule — plus a full in-event
+        scouting workspace for your team, all in one place.
       </p>
 
       <div className="mt-[34px] grid gap-4">
@@ -100,16 +101,29 @@ export default function AboutPage() {
           higher means a harder draw. Toggle between pre- and post-event ratings.
         </Card>
 
+        <Card title="Team scouting">
+          Beyond the analytics, TaterScout has a full{" "}
+          <strong className={STRONG}>in-event scouting workspace</strong> for your
+          team. Create a workspace, import your event, and invite scouts with a
+          join code. Admins delegate match and pit scouting across the team — with
+          overdue-report tracking — and scouts fill in quick mobile forms,
+          including a big-button <strong className={STRONG}>tally mode</strong> for
+          counting scored artifacts. Everyone builds a{" "}
+          <strong className={STRONG}>pick list</strong> with stackable filters and
+          sorting, plus a private shortlist for alliance selection.
+        </Card>
+
         <Card title="Live data">
-          The <strong className={STRONG}>↻ refresh</strong> button in the header
-          pulls the latest results straight from the FIRST API. It only fetches
-          the events that changed since the last sync and recomputes the affected
-          ratings — so a match that just finished shows up in seconds.
+          TaterScout re-syncs from the FIRST API automatically. A background
+          staleness check runs after page loads and only re-fetches the events
+          that changed since the last sync, recomputing the affected ratings; team
+          and event pages also poll while an event is live — so a match that just
+          finished shows up within seconds, with nothing to click.
         </Card>
 
         <Card title="On the roadmap">
           <ul className="m-0 list-disc pl-5 leading-[1.8]">
-            <li>Side-by-side alliance comparison for pick lists</li>
+            <li>Side-by-side alliance comparison</li>
             <li>A multi-division &ldquo;win the Championship&rdquo; projection</li>
           </ul>
         </Card>

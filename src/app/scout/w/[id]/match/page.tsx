@@ -40,11 +40,21 @@ function Radio<T extends string>({ options, value, set }: { options: readonly T[
   );
 }
 
-function Stepper({ label, value, set }: { label: string; value: number; set: (n: number) => void }) {
+function Stepper({ label, value, set, onTally }: { label: string; value: number; set: (n: number) => void; onTally?: () => void }) {
   return (
     <div className={`${CARD} flex items-center justify-between`}>
       <span className="text-[14px]">{label}</span>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
+        {onTally && (
+          <button
+            type="button"
+            onClick={onTally}
+            className="rounded-lg border border-[#232323] px-2.5 py-2 text-[12px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+            title="Tally mode — big +/- buttons"
+          >
+            Tally
+          </button>
+        )}
         <button type="button" onClick={() => set(Math.max(0, value - 1))} className="h-9 w-9 rounded-lg border border-[#232323] text-[18px] text-muted hover:border-[#3a3a3a]">
           −
         </button>
@@ -53,6 +63,55 @@ function Stepper({ label, value, set }: { label: string; value: number; set: (n:
           +
         </button>
       </div>
+    </div>
+  );
+}
+
+// Full-screen tally counter (built for mobile): the bottom 3/4 is one big "+1"
+// tap zone, the top 1/4 is "-1". The running count sits on the boundary.
+function TallyOverlay({
+  label,
+  value,
+  inc,
+  dec,
+  onClose,
+}: {
+  label: string;
+  value: number;
+  inc: () => void;
+  dec: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex select-none flex-col bg-[#0a0a0a]">
+      {/* Top 1/4 — tap anywhere to subtract one. */}
+      <button
+        type="button"
+        onClick={dec}
+        className="flex h-1/4 items-center justify-center gap-3 bg-[#170f0f] transition-colors active:bg-[#2a1414]"
+      >
+        <span className="text-[56px] font-bold leading-none text-accent">−</span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#7a5a5a]">tap to −1</span>
+      </button>
+      {/* Bottom 3/4 — the count lives here; tap anywhere to add one. */}
+      <button
+        type="button"
+        onClick={inc}
+        className="flex h-3/4 flex-col items-center justify-center gap-1 bg-[#0c130d] transition-colors active:bg-[#132a17]"
+      >
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">{label}</span>
+        <span className="text-[128px] font-bold leading-none tabular-nums text-foreground">{value}</span>
+        <span className="mt-2 flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.14em] text-teal">
+          <span className="text-[28px] leading-none">+</span> tap to add
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-4 top-4 rounded-full border border-[#333] bg-black/50 px-4 py-2 text-[14px] font-medium text-foreground backdrop-blur"
+      >
+        Done
+      </button>
     </div>
   );
 }
@@ -83,6 +142,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
   const [note, setNote] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [tally, setTally] = useState<null | "auto" | "teleop">(null);
 
   const state = useQuery(
     api.match.matchState,
@@ -290,13 +350,13 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
               <Toggle on={autoLeave} onClick={() => setAutoLeave(!autoLeave)}>Leave</Toggle>
               <Toggle on={autoUndis} onClick={() => setAutoUndis(!autoUndis)}>Undisrupted</Toggle>
             </div>
-            <div className="mt-2"><Stepper label="Auto artifacts" value={autoArt} set={setAutoArt} /></div>
+            <div className="mt-2"><Stepper label="Auto artifacts" value={autoArt} set={setAutoArt} onTally={() => setTally("auto")} /></div>
           </section>
 
           <section>
             <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">TeleOp zone</div>
             <Radio options={["far", "near", "none"] as const} value={teleZone} set={setTeleZone} />
-            <div className="mt-2"><Stepper label="TeleOp artifacts" value={teleArt} set={setTeleArt} /></div>
+            <div className="mt-2"><Stepper label="TeleOp artifacts" value={teleArt} set={setTeleArt} onTally={() => setTally("teleop")} /></div>
           </section>
 
           <section>
@@ -347,6 +407,16 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
             {busy ? "Saving…" : "Submit report"}
           </button>
         </div>
+      )}
+
+      {tally && (
+        <TallyOverlay
+          label={tally === "auto" ? "Auto artifacts" : "TeleOp artifacts"}
+          value={tally === "auto" ? autoArt : teleArt}
+          inc={() => (tally === "auto" ? setAutoArt((v) => v + 1) : setTeleArt((v) => v + 1))}
+          dec={() => (tally === "auto" ? setAutoArt((v) => Math.max(0, v - 1)) : setTeleArt((v) => Math.max(0, v - 1)))}
+          onClose={() => setTally(null)}
+        />
       )}
     </div>
   );

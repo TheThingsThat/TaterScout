@@ -1,14 +1,15 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Collapsible from "@/components/Collapsible";
-import { formatClock } from "@/lib/format";
+import { formatClock, fmt } from "@/lib/format";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
+const HEADING = "mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#6b6f78]";
 
 type SchedMatch = {
   matchNumber: number;
@@ -17,6 +18,27 @@ type SchedMatch = {
   predictedTime: number | null;
   actualStartTime?: number | null;
 };
+type TeamRow = {
+  teamNumber: number;
+  name: string;
+  rank: number | null;
+  epa: number | null;
+  oprNp: number | null;
+};
+
+// Match `lg:` breakpoint (1024px) in JS so the schedule can render expanded on
+// desktop and as a dropdown on mobile without duplicating the markup.
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setDesktop(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return desktop;
+}
 
 function AllianceCell({ teams, side, align, highlight }: { teams: number[]; side: "red" | "blue"; align: "left" | "right"; highlight?: number }) {
   const color = side === "red" ? "#ff5d6c" : "#4d8dff";
@@ -59,10 +81,80 @@ function ScheduleRows({ matches, highlight }: { matches: SchedMatch[]; highlight
   );
 }
 
+const TH = "px-2.5 py-2.5 text-right font-mono text-[10px] font-bold uppercase tracking-[0.1em]";
+
+// Team rankings, duplicated from the event-page rankings: sort by EPA or by the
+// actual qualification standing.
+function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season: number; highlight?: number }) {
+  const hasEpa = teams.some((t) => t.epa != null);
+  const hasRank = teams.some((t) => t.rank != null);
+  const [sort, setSort] = useState<"epa" | "rank">(hasEpa ? "epa" : "rank");
+
+  const ranked = [...teams].sort((a, b) => {
+    if (sort === "rank") {
+      return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.teamNumber - b.teamNumber;
+    }
+    return (b.epa ?? -Infinity) - (a.epa ?? -Infinity) || (b.oprNp ?? -Infinity) - (a.oprNp ?? -Infinity);
+  });
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+      {(hasEpa || hasRank) && (
+        <div className="flex items-center justify-end gap-1.5 border-b border-[#1f1f1f] px-3 py-2">
+          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6b6f78]">Sort</span>
+          <div className="flex rounded-lg border border-[#232323] p-0.5 text-[12px]">
+            {hasEpa && (
+              <button onClick={() => setSort("epa")} className={`rounded-md px-2.5 py-1 ${sort === "epa" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}>
+                EPA
+              </button>
+            )}
+            <button onClick={() => setSort("rank")} className={`rounded-md px-2.5 py-1 ${sort === "rank" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}>
+              Qual rank
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="ts-scroll overflow-x-auto">
+        <table className="w-full min-w-[20rem] border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-[#1f1f1f] text-[#6b6f78]">
+              <th className="px-3 py-2.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em]">#</th>
+              <th className="px-3 py-2.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em]">Team</th>
+              {hasEpa && <th className={TH} style={{ color: "#2f8bff" }}>EPA</th>}
+              <th className={TH} style={{ color: "#3ecf76" }}>OPR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranked.map((t, i) => (
+              <tr
+                key={t.teamNumber}
+                className={`border-b border-[#141414] last:border-0 hover:bg-[#101010] ${t.teamNumber === highlight ? "bg-accent/[0.05]" : ""}`}
+              >
+                <td className="px-3 py-2.5 font-mono text-[#6b6f78]">{sort === "rank" ? (t.rank ?? i + 1) : i + 1}</td>
+                <td className="px-3 py-2.5">
+                  <Link href={`/teams/${t.teamNumber}?season=${season}`} className="no-underline hover:text-accent">
+                    <span className="font-mono text-[#6b6f78]">{t.teamNumber}</span>{" "}
+                    <span className="font-medium text-[#e7eaf0]">{t.name}</span>
+                  </Link>
+                </td>
+                {hasEpa && (
+                  <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#2f8bff" }}>{fmt(t.epa)}</td>
+                )}
+                <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "#3ecf76" }}>{fmt(t.oprNp)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function Overview({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
   const teams = useQuery(api.teams.list, { workspaceId: id });
   const schedule = useQuery(api.match.schedule, { workspaceId: id });
+  const isDesktop = useIsDesktop();
 
   if (data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (data === null)
@@ -85,6 +177,29 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
           .filter((m) => m.actualStartTime == null && [...m.red, ...m.blue].includes(myTeam))
           .sort((a, b) => a.matchNumber - b.matchNumber)[0] ?? null
       : null;
+
+  const scheduleBlock =
+    matchCount > 0 &&
+    (isDesktop ? (
+      <div>
+        <div className={HEADING}>
+          Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
+        </div>
+        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
+      </div>
+    ) : (
+      <Collapsible
+        defaultOpen={false}
+        gap="mb-2"
+        header={
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+            Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
+          </span>
+        }
+      >
+        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
+      </Collapsible>
+    ));
 
   return (
     <div className="space-y-6">
@@ -148,19 +263,14 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
           )}
         </div>
       ) : (
-        matchCount > 0 && (
-          <Collapsible
-            defaultOpen={false}
-            gap="mb-2"
-            header={
-              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
-                Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
-              </span>
-            }
-          >
-            <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
-          </Collapsible>
-        )
+        // Desktop: rankings (left) + schedule (right). Mobile: stacked, schedule collapses.
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div>
+            <div className={HEADING}>Team rankings</div>
+            <RankingsTable teams={(teams ?? []) as TeamRow[]} season={workspace.season} highlight={myTeam ?? undefined} />
+          </div>
+          {matchCount > 0 && <div>{scheduleBlock}</div>}
+        </div>
       )}
     </div>
   );

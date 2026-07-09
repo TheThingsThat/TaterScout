@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getTeam, getEventMatches } from "@/lib/ftc/queries";
+import { getTeam, getEventMatches, getSeasonRecord } from "@/lib/ftc/queries";
 import { CURRENT_SEASON, seasonFull, seasonLabel } from "@/lib/season";
 import { eventTypeLabel, formatAward } from "@/lib/ftc/labels";
 import { formatDate, formatClock, locationStr } from "@/lib/format";
@@ -142,6 +142,10 @@ export default async function TeamPage({ params, searchParams }: Props) {
     ? await findNextMatch(season, num, ongoing)
     : null;
 
+  // Season qualification record (W-L-T) across this season's events.
+  const record = await getSeasonRecord(season, num, team.events.map((e) => e.eventCode));
+  const recordGames = record.wins + record.losses + record.ties;
+
   // Chronological, most recent first.
   const events = [...team.events].sort((a, b) => b.event.start.localeCompare(a.event.start));
 
@@ -234,6 +238,17 @@ export default async function TeamPage({ params, searchParams }: Props) {
             {seasonLabel(s)}
           </Link>
         ))}
+        {recordGames > 0 && (
+          <span className="ml-auto flex items-baseline gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
+              Qual record
+            </span>
+            <span className="text-[15px] font-semibold tabular-nums text-[#f7f8fa]">
+              {record.wins}–{record.losses}
+              {record.ties > 0 ? `–${record.ties}` : ""}
+            </span>
+          </span>
+        )}
       </div>
 
       {/* EPA */}

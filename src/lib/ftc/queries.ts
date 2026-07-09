@@ -329,7 +329,8 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   };
 }
 
-/** Lightweight match list for an event (times + team numbers) — team-page use. */
+/** Lightweight match list for an event (times + team numbers + final scores) —
+ *  team-page use (next-match lookup and season W-L-T). */
 export interface EventMatchLite {
   timezone: string;
   matches: {
@@ -339,7 +340,9 @@ export interface EventMatchLite {
     hasBeenPlayed: boolean;
     scheduledStartTime: string | null;
     actualStartTime: string | null;
-    teams: { teamNumber: number }[];
+    redFinal: number | null;
+    blueFinal: number | null;
+    teams: { teamNumber: number; alliance: "Red" | "Blue" }[];
   }[];
 }
 
@@ -362,9 +365,48 @@ export async function getEventMatches(season: number, code: string): Promise<Eve
         hasBeenPlayed: !!m.postResultTime,
         scheduledStartTime: m.startTime,
         actualStartTime: m.actualStartTime,
-        teams: m.teams.map((t) => ({ teamNumber: t.teamNumber })),
+        redFinal: m.scoreRedFinal,
+        blueFinal: m.scoreBlueFinal,
+        teams: m.teams.map((t) => ({
+          teamNumber: t.teamNumber,
+          alliance: t.station.startsWith("Red") ? ("Red" as const) : ("Blue" as const),
+        })),
       })),
   };
+}
+
+export interface SeasonRecord {
+  wins: number;
+  losses: number;
+  ties: number;
+}
+
+/** A team's qualification W-L-T across its events in a season, from final scores. */
+export async function getSeasonRecord(
+  season: number,
+  teamNumber: number,
+  eventCodes: string[],
+): Promise<SeasonRecord> {
+  const results = await Promise.all(
+    eventCodes.map((c) => getEventMatches(season, c).catch(() => null)),
+  );
+  let wins = 0;
+  let losses = 0;
+  let ties = 0;
+  for (const res of results) {
+    if (!res) continue;
+    for (const m of res.matches) {
+      if (!m.hasBeenPlayed || m.redFinal == null || m.blueFinal == null) continue;
+      const mine = m.teams.find((t) => t.teamNumber === teamNumber);
+      if (!mine) continue;
+      const my = mine.alliance === "Red" ? m.redFinal : m.blueFinal;
+      const opp = mine.alliance === "Red" ? m.blueFinal : m.redFinal;
+      if (my > opp) wins++;
+      else if (my < opp) losses++;
+      else ties++;
+    }
+  }
+  return { wins, losses, ties };
 }
 
 // ---------------------------------------------------------------------------

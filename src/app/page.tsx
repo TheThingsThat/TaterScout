@@ -36,6 +36,12 @@ const FEATURES = [
     tag: "Live",
     rects: [[0, 0], [0, 4], [0, 8], [8, 0], [8, 4], [8, 8]],
   },
+  {
+    title: "Team scouting",
+    body: "A full in-event workspace: import your event, delegate match & pit scouting to your team, collect reports on a phone, and rank teams with stackable filters and a personal shortlist for alliance selection.",
+    tag: "New",
+    rects: [[0, 0], [4, 0], [8, 0], [0, 4], [4, 4], [8, 4], [0, 8], [4, 8], [8, 8]],
+  },
 ];
 
 async function StatStrip() {
@@ -157,7 +163,8 @@ export default function Home() {
           </h1>
           <p className="mx-auto mt-6 max-w-[560px] text-balance text-[18px] leading-[1.55] text-muted">
             Search any FIRST Tech Challenge team or event for EPA, OPR, win
-            predictions, strength of schedule, and rankings.
+            predictions, strength of schedule, and rankings — plus a full in-event
+            scouting workspace for your team.
           </p>
           <div className="mx-auto mt-[34px] max-w-[520px]">
             <SearchBar size="lg" />
@@ -212,7 +219,9 @@ export default function Home() {
                     style={
                       f.tag === "Live"
                         ? { background: "#0a0a0a", color: "#fff" }
-                        : { background: "#d7dade", color: "#52565e" }
+                        : f.tag === "New"
+                          ? { background: "var(--accent)", color: "#fff" }
+                          : { background: "#d7dade", color: "#52565e" }
                     }
                   >
                     {f.tag}
