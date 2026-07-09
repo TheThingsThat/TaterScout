@@ -17,6 +17,8 @@ type SchedMatch = {
   blue: number[];
   predictedTime: number | null;
   actualStartTime?: number | null;
+  redScore?: number | null;
+  blueScore?: number | null;
 };
 type TeamRow = {
   teamNumber: number;
@@ -40,12 +42,12 @@ function useIsDesktop() {
   return desktop;
 }
 
-function AllianceCell({ teams, side, align, highlight }: { teams: number[]; side: "red" | "blue"; align: "left" | "right"; highlight?: number }) {
-  const color = side === "red" ? "#ff5d6c" : "#4d8dff";
+function AllianceCell({ teams, side, won, align }: { teams: number[]; side: "red" | "blue"; won: boolean; align: "left" | "right" }) {
+  const color = won ? (side === "red" ? "#ff5d6c" : "#4d8dff") : "#6b6f78";
   return (
     <div className={`flex flex-col gap-0.5 ${align === "right" ? "items-end text-right" : "items-start text-left"}`}>
       {teams.map((t) => (
-        <span key={t} className="font-mono text-[13px]" style={{ color, fontWeight: t === highlight ? 800 : 400 }}>
+        <span key={t} className="font-mono text-[13px]" style={{ color, fontWeight: won ? 700 : 400 }}>
           {t}
         </span>
       ))}
@@ -53,26 +55,39 @@ function AllianceCell({ teams, side, align, highlight }: { teams: number[]; side
   );
 }
 
+// Duplicates the event page's qualification rows: final scores (winner
+// emphasized) for played matches, our predicted start time for upcoming ones.
 function ScheduleRows({ matches, highlight }: { matches: SchedMatch[]; highlight?: number }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
       {matches.map((m) => {
-        const played = m.actualStartTime != null;
+        const redScore = m.redScore ?? null;
+        const blueScore = m.blueScore ?? null;
+        const played = redScore != null && blueScore != null;
+        const redWon = played && redScore > blueScore;
+        const blueWon = played && blueScore > redScore;
         const time = m.actualStartTime ?? m.predictedTime;
+        const mine = highlight != null && [...m.red, ...m.blue].includes(highlight);
         return (
           <div
             key={m.matchNumber}
-            className={`grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] first:border-t-0 ${
-              highlight && [...m.red, ...m.blue].includes(highlight) ? "bg-accent/[0.05]" : ""
-            }`}
+            className={`grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] first:border-t-0 ${mine ? "bg-accent/[0.05]" : ""}`}
           >
             <span className="font-mono text-[12px] text-[#6b6f78]">Q{m.matchNumber}</span>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-              <AllianceCell teams={m.red} side="red" align="right" highlight={highlight} />
-              <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]">
-                {played ? formatClock(time) : time != null ? `~${formatClock(time)}` : "vs"}
-              </span>
-              <AllianceCell teams={m.blue} side="blue" align="left" highlight={highlight} />
+              <AllianceCell teams={m.red} side="red" won={redWon} align="right" />
+              {played ? (
+                <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
+                  <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>{redScore}</span>
+                  <span className="text-[#3a3f48]">–</span>
+                  <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>{blueScore}</span>
+                </div>
+              ) : (
+                <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]">
+                  {time != null ? `~${formatClock(time)}` : "vs"}
+                </span>
+              )}
+              <AllianceCell teams={m.blue} side="blue" won={blueWon} align="left" />
             </div>
           </div>
         );

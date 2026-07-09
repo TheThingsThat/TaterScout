@@ -29,6 +29,8 @@ export const importSnapshot = mutation({
         blue: v.array(v.number()),
         predictedTime: nn,
         actualStartTime: v.optional(nn),
+        redScore: v.optional(nn),
+        blueScore: v.optional(nn),
       }),
     ),
   },

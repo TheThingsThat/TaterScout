@@ -57,6 +57,8 @@ export default defineSchema({
     blue: v.array(v.number()),
     predictedTime: v.union(v.number(), v.null()), // ms epoch
     actualStartTime: v.optional(v.union(v.number(), v.null())), // ms epoch, once played
+    redScore: v.optional(v.union(v.number(), v.null())), // final total, once played
+    blueScore: v.optional(v.union(v.number(), v.null())),
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_match", ["workspaceId", "matchNumber"]),

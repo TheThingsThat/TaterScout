@@ -460,6 +460,21 @@ function scoreMatch(hayName: string, needle: string, extra?: string): number {
   return Infinity;
 }
 
+/** All events for a season (metadata only), straight from FIRST. Unlike the
+ *  precomputed store — which only holds events that already have matches — this
+ *  includes UPCOMING events, so they stay searchable/importable before start. */
+export async function getSeasonEventList(season: number): Promise<EventSearchResult[]> {
+  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: REVALIDATE });
+  return (r?.events ?? []).map((e) => ({
+    code: e.code,
+    season,
+    name: e.name ?? e.code,
+    start: e.dateStart ?? "",
+    type: normalizeEventType(e.typeName),
+    location: { city: e.city, state: e.stateprov, country: e.country },
+  }));
+}
+
 export async function searchAll(
   searchText: string,
   season: number,
@@ -468,24 +483,27 @@ export async function searchAll(
   if (!q) return { teams: [], events: [] };
   await ensureLoaded(season);
   const f = getRankingsData(season);
-  if (!f) return { teams: [], events: [] };
 
   const teams: { r: TeamSearchResult; s: number }[] = [];
-  for (const [num, row] of Object.entries(f.teams)) {
-    const s = scoreMatch(row.name, q, num);
-    if (s !== Infinity)
-      teams.push({
-        r: { number: Number(num), name: row.name, location: { city: null, state: row.region, country: null } },
-        s,
-      });
+  if (f) {
+    for (const [num, row] of Object.entries(f.teams)) {
+      const s = scoreMatch(row.name, q, num);
+      if (s !== Infinity)
+        teams.push({
+          r: { number: Number(num), name: row.name, location: { city: null, state: row.region, country: null } },
+          s,
+        });
+    }
+    teams.sort((a, b) => a.s - b.s || a.r.number - b.r.number);
   }
-  teams.sort((a, b) => a.s - b.s || a.r.number - b.r.number);
 
-  const events: { r: EventSearchResult; s: number }[] = [];
-  for (const e of f.events ?? []) {
+  // Events: the precomputed store first (rich; only events with matches), then
+  // FIRST's full season list so upcoming events (no matches yet) are findable.
+  const eventScored = new Map<string, { r: EventSearchResult; s: number }>();
+  for (const e of f?.events ?? []) {
     const s = Math.min(scoreMatch(e.name ?? "", q), scoreMatch(e.code, q));
     if (s !== Infinity)
-      events.push({
+      eventScored.set(e.code, {
         r: {
           code: e.code,
           season,
@@ -497,7 +515,16 @@ export async function searchAll(
         s,
       });
   }
-  events.sort((a, b) => a.s - b.s || (a.r.start < b.r.start ? 1 : -1));
+  try {
+    for (const e of await getSeasonEventList(season)) {
+      if (eventScored.has(e.code)) continue;
+      const s = Math.min(scoreMatch(e.name, q), scoreMatch(e.code, q));
+      if (s !== Infinity) eventScored.set(e.code, { r: e, s });
+    }
+  } catch {
+    /* FIRST unavailable — fall back to store events only */
+  }
+  const events = [...eventScored.values()].sort((a, b) => a.s - b.s || (a.r.start < b.r.start ? 1 : -1));
 
   return { teams: teams.slice(0, 12).map((x) => x.r), events: events.slice(0, 12).map((x) => x.r) };
 }
