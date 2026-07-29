@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -34,6 +34,15 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   const [changing, setChanging] = useState(false);
   const [teamQuery, setTeamQuery] = useState("");
   const timer = useRef<number | undefined>(undefined);
+  const abort = useRef<AbortController | null>(null);
+
+  // Drop a pending debounce/request if the page unmounts mid-search.
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      abort.current?.abort();
+    };
+  }, []);
 
   if (data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (data === null || data.member.role !== "admin")
@@ -58,19 +67,28 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
     const q = v.trim();
     timer.current = window.setTimeout(async () => {
       if (q.length < 2) {
+        abort.current?.abort();
         setResults([]);
         setSearching(false);
         return;
       }
+      // Cancel the previous request so a slow earlier response can't land after
+      // (and overwrite) a newer one.
+      abort.current?.abort();
+      const ctrl = new AbortController();
+      abort.current = ctrl;
       setSearching(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&season=${season}`);
+        const res = await fetch(
+          `/api/search?q=${encodeURIComponent(q)}&season=${season}`,
+          { signal: ctrl.signal },
+        );
         const j = await res.json();
         setResults((j.events ?? []) as EventResult[]);
       } catch {
-        setResults([]);
+        if (!ctrl.signal.aborted) setResults([]);
       } finally {
-        setSearching(false);
+        if (abort.current === ctrl) setSearching(false);
       }
     }, 250);
   }
@@ -78,10 +96,14 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   async function importCode(code: string, name?: string) {
     setImportingCode(code);
     try {
-      if (name !== undefined) await setEvent({ workspaceId: id, eventCode: code, eventName: name });
       const res = await fetch(`/api/scout/import?season=${season}&code=${encodeURIComponent(code)}`);
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Import failed");
+      // Set the event first (it carries the venue timezone we just fetched), so
+      // a re-import of the same code refreshes tz without wiping data.
+      if (name !== undefined) {
+        await setEvent({ workspaceId: id, eventCode: code, eventName: name, timezone: j.timezone });
+      }
       const r = await importSnapshot({ workspaceId: id, teams: j.teams, matches: j.matches });
       toast.success(`Imported ${name ?? code}: ${r.teams} teams, ${r.matches} matches`);
       setQuery("");

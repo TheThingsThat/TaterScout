@@ -25,10 +25,12 @@ if (!process.env.BLOB_READ_WRITE_TOKEN) {
 const dataDir = process.env.VIBESCOUT_DATA_DIR || path.join(process.cwd(), "src", "data");
 
 // Latest raw cache in /tmp (e.g. vibescout-raw-2025-v7.json), whichever version.
+// Highest schema version numerically — a lexicographic sort would rank v10 < v7.
 const rawCache = readdirSync("/tmp")
   .filter((f) => f.startsWith(`vibescout-raw-${SEASON}-`) && f.endsWith(".json"))
-  .sort()
-  .pop();
+  .map((f) => ({ f, v: Number(/-v(\d+)\.json$/.exec(f)?.[1] ?? -1) }))
+  .sort((a, b) => a.v - b.v)
+  .pop()?.f;
 
 const sources: [string, string][] = [
   [`rankings-${SEASON}`, path.join(dataDir, `rankings-${SEASON}.json`)],

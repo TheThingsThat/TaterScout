@@ -86,13 +86,25 @@ export const move = mutation({
     )
       .filter((e) => e._id !== entryId)
       .sort((a, b) => a.rank - b.rank);
-    const before = others[toIndex - 1]?.rank;
-    const after = others[toIndex]?.rank;
+    const idx = Math.max(0, Math.min(Math.floor(toIndex), others.length));
+    const before = others[idx - 1]?.rank;
+    const after = others[idx]?.rank;
     let rank: number;
     if (before == null && after == null) rank = 0;
     else if (before == null) rank = (after as number) - 1;
     else if (after == null) rank = before + 1;
     else rank = (before + after) / 2;
+
+    // Repeated drops into the same gap eventually exhaust float precision and
+    // collide. When the gap closes, rewrite the list with clean integer ranks.
+    if (before != null && after != null && after - before < 1e-6) {
+      const ordered = [...others];
+      ordered.splice(idx, 0, { ...entry, rank });
+      for (let i = 0; i < ordered.length; i++) {
+        await ctx.db.patch(ordered[i]._id, { rank: i });
+      }
+      return;
+    }
     await ctx.db.patch(entryId, { rank });
   },
 });

@@ -28,6 +28,24 @@ export function seasonFull(season: number): string {
   return name ? `${seasonLabel(season)} · ${name}` : seasonLabel(season);
 }
 
+/** A season we actually have data for. Clamp URL/query input through this so a
+ *  stranger can't drive fetches or dataset writes with arbitrary numbers. */
+export function isKnownSeason(season: number): boolean {
+  return Object.prototype.hasOwnProperty.call(SEASON_NAMES, season);
+}
+
+/** Parse untrusted season input, falling back to the current season. */
+export function parseSeasonParam(raw: string | number | null | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && isKnownSeason(n) ? n : CURRENT_SEASON;
+}
+
+/** FIRST event codes are short alphanumerics; reject anything else so user input
+ *  can't inject path/query segments into credentialed FIRST API URLs. */
+export function isValidEventCode(code: string): boolean {
+  return /^[A-Z0-9]{2,20}$/.test(code);
+}
+
 /** Seasons whose scores are a single (non Trad/Remote) MatchScores type. */
 export function seasonHasSimpleScores(season: number): boolean {
   return [2019, 2022, 2023, 2024, 2025].includes(season);

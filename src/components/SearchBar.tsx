@@ -94,7 +94,9 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
       } catch {
         /* aborted */
       } finally {
-        setLoading(false);
+        // Only the newest request may clear the spinner — an aborted older one
+        // would otherwise flash "not found" while this search is still running.
+        if (abortRef.current === ctrl) setLoading(false);
       }
     }, 220);
     return () => clearTimeout(t);

@@ -66,9 +66,13 @@ function passes(t: TeamRow, f: Filter): boolean {
     const v = t[f.field];
     return f.op === "is" ? v === f.value : v !== f.value;
   }
-  const v = t[f.field];
+  // A blank or non-numeric threshold means "not configured yet" — treat the
+  // filter as inactive rather than excluding every team (Number("") is 0).
+  if (f.value.trim() === "") return true;
   const target = Number(f.value);
-  if (v == null || Number.isNaN(target)) return false;
+  if (Number.isNaN(target)) return true;
+  const v = t[f.field];
+  if (v == null) return false;
   return (f as { op: string }).op === "gte" ? v >= target : v <= target;
 }
 

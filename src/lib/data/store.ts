@@ -12,7 +12,7 @@ interface Slot {
   at: number; // last load time (0 = never)
 }
 const computed = new Map<number, Slot>();
-const raw = new Map<number, RawEvent[] | null>();
+const raw = new Map<number, { events: RawEvent[] | null; at: number }>();
 
 /** Load the three computed datasets into memory if missing or stale. Call this
  *  (awaited) in a server component before using the sync getters below. */
@@ -49,25 +49,31 @@ export function getEventStatsData(season: number): EventStatsFile | null {
   return computed.get(season)?.data?.eventStats ?? null;
 }
 
-/** The ingested raw event/match set (refresh working copy). Null if not seeded. */
+/** The ingested raw event/match set (refresh working copy). Null if not seeded.
+ *  Re-read on the same TTL as the computed data: a long-lived instance holding a
+ *  stale copy would run its delta against it and persist a season missing events
+ *  another instance had already added. */
 export async function getRawEvents(season: number): Promise<RawEvent[] | null> {
-  if (raw.has(season)) return raw.get(season)!;
+  const cur = raw.get(season);
+  if (cur && Date.now() - cur.at < TTL_MS) return cur.events;
   const s = await readDataset(`raw-${season}`);
   const parsed = s ? (JSON.parse(s) as RawEvent[]) : null;
-  raw.set(season, parsed);
+  // On a read failure keep whatever we had rather than dropping to null.
+  if (parsed === null && cur) return cur.events;
+  raw.set(season, { events: parsed, at: Date.now() });
   return parsed;
 }
 
 /** Replace in-memory data so a refresh is visible immediately within this instance. */
 export function applyComputed(season: number, rawEvents: RawEvent[], data: ComputedData): void {
   computed.set(season, { data, at: Date.now() });
-  raw.set(season, rawEvents);
+  raw.set(season, { events: rawEvents, at: Date.now() });
 }
 
 /** Persist the current in-memory data to the backend (Blob or files). */
 export async function persist(season: number): Promise<void> {
   const data = computed.get(season)?.data;
-  const rawEvents = raw.get(season);
+  const rawEvents = raw.get(season)?.events;
   if (!data || !rawEvents) return;
   await Promise.all([
     writeDataset(`rankings-${season}`, JSON.stringify(data.rankings)),

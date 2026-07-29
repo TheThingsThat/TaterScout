@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireMember } from "./lib";
+import { requireMember, requirePitAccess, checkLen } from "./lib";
 
 export const get = query({
   args: { workspaceId: v.id("workspaces"), teamNumber: v.number() },
@@ -31,7 +31,8 @@ export const upsert = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const member = await requireMember(ctx, args.workspaceId);
+    const member = await requirePitAccess(ctx, args.workspaceId, args.teamNumber);
+    checkLen(args.notes, 1000, "Notes");
     const existing = await ctx.db
       .query("pitReports")
       .withIndex("by_workspace_team", (q) =>

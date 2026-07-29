@@ -36,8 +36,14 @@ async function tick(season: number): Promise<void> {
     if (now < meta.nextCheckAt) return;
 
     // Optimistic claim so parallel instances mostly don't double-sync; the
-    // real nextCheckAt is written by runRefresh when it finishes.
-    await writeRefreshMeta(season, { lastSyncAt: meta.lastSyncAt, nextCheckAt: now + 90_000 });
+    // real nextCheckAt is written by runRefresh when it finishes. Carry
+    // lastWideAt through — dropping it made runRefresh think a wide sweep was
+    // always due, so every tick re-crawled the whole ±14/+3-day window.
+    await writeRefreshMeta(season, {
+      lastSyncAt: meta.lastSyncAt,
+      lastWideAt: meta.lastWideAt,
+      nextCheckAt: now + 90_000,
+    });
 
     const res = await runRefresh(season);
     if (res?.changed) {

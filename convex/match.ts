@@ -1,6 +1,12 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireMember } from "./lib";
+import {
+  requireMember,
+  requireAdmin,
+  requireMatchAccess,
+  checkLen,
+  checkTags,
+} from "./lib";
 
 /** Qual schedule for the workspace's event. */
 export const schedule = query({
@@ -53,7 +59,7 @@ export const matchState = query({
 export const claim = mutation({
   args: { workspaceId: v.id("workspaces"), matchNumber: v.number(), teamNumber: v.number() },
   handler: async (ctx, { workspaceId, matchNumber, teamNumber }) => {
-    const member = await requireMember(ctx, workspaceId);
+    const member = await requireMatchAccess(ctx, workspaceId, matchNumber, teamNumber);
     const existing = await ctx.db
       .query("matchClaims")
       .withIndex("by_workspace_match_team", (q) =>
@@ -109,7 +115,16 @@ export const submitReport = mutation({
     tags: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const member = await requireMember(ctx, args.workspaceId);
+    const member = await requireMatchAccess(
+      ctx,
+      args.workspaceId,
+      args.matchNumber,
+      args.teamNumber,
+    );
+    checkLen(args.malfunctionNote, 500, "Note");
+    checkTags(args.malfunctions, 20, 40, "malfunctions");
+    checkTags(args.tags, 20, 40, "tags");
+
     const reports = await ctx.db
       .query("matchReports")
       .withIndex("by_workspace_match", (q) =>
@@ -119,6 +134,21 @@ export const submitReport = mutation({
     if (reports.some((r) => r.teamNumber === args.teamNumber)) {
       throw new Error("A report already exists for this robot in this match.");
     }
+
+    // Don't let one scout submit over (and silently void) another's claim.
+    const claim = await ctx.db
+      .query("matchClaims")
+      .withIndex("by_workspace_match_team", (q) =>
+        q
+          .eq("workspaceId", args.workspaceId)
+          .eq("matchNumber", args.matchNumber)
+          .eq("teamNumber", args.teamNumber),
+      )
+      .unique();
+    if (claim && claim.memberId !== member._id && member.role !== "admin") {
+      throw new Error("Another scout is scouting this robot.");
+    }
+
     const { workspaceId, ...rest } = args;
     const id = await ctx.db.insert("matchReports", {
       workspaceId,
@@ -127,13 +157,18 @@ export const submitReport = mutation({
       ...rest,
     });
     // Free the claim now that the report exists.
-    const claim = await ctx.db
-      .query("matchClaims")
-      .withIndex("by_workspace_match_team", (q) =>
-        q.eq("workspaceId", workspaceId).eq("matchNumber", args.matchNumber).eq("teamNumber", args.teamNumber),
-      )
-      .unique();
     if (claim) await ctx.db.delete(claim._id);
     return id;
+  },
+});
+
+/** Delete a match report so a mis-scouted robot can be re-scouted (admin only). */
+export const deleteReport = mutation({
+  args: { reportId: v.id("matchReports") },
+  handler: async (ctx, { reportId }) => {
+    const report = await ctx.db.get(reportId);
+    if (!report) return;
+    await requireAdmin(ctx, report.workspaceId);
+    await ctx.db.delete(reportId);
   },
 });

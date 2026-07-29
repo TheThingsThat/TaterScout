@@ -51,22 +51,31 @@ async function blobUrl(name: string): Promise<string | null> {
   }
 }
 
+async function readFromBlob(name: string): Promise<string | null> {
+  const url = await blobUrl(name);
+  if (!url) return null;
+  try {
+    // Cache the bytes ~60s; combined with the store's in-memory TTL this bounds
+    // how long after a refresh new data takes to appear. Sync meta is the
+    // cross-instance coordination signal, so it's always read fresh.
+    const res = await fetch(
+      url,
+      name.startsWith("meta-") ? { cache: "no-store" } : { next: { revalidate: 60 } },
+    );
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readDataset(name: string): Promise<string | null> {
   if (blobEnabled()) {
-    const url = await blobUrl(name);
-    if (!url) return null;
-    try {
-      // Cache the bytes ~60s; combined with the store's in-memory TTL this bounds
-      // how long after a refresh new data takes to appear. Sync meta is the
-      // cross-instance coordination signal, so it's always read fresh.
-      const res = await fetch(
-        url,
-        name.startsWith("meta-") ? { cache: "no-store" } : { next: { revalidate: 60 } },
-      );
-      return res.ok ? await res.text() : null;
-    } catch {
-      return null;
-    }
+    const fromBlob = await readFromBlob(name);
+    if (fromBlob !== null) return fromBlob;
+    // Blob unavailable — over quota (the store gets paused), not yet seeded, or
+    // down. Fall through to the copy shipped with the deploy so the site serves
+    // last-commit data instead of going blank. raw-/meta- live in /tmp, which is
+    // never bundled, so those still return null and a refresh fails loudly.
   }
   try {
     return readFileSync(localPath(name), "utf8");

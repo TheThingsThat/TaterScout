@@ -97,6 +97,10 @@ export const matchBoard = query({
           memberName: nameById.get(a.memberId) ?? "?",
           predictedTime: m?.predictedTime ?? null,
           hasReport,
+          // When the report becomes late. The client compares this to the wall
+          // clock — a reactive query only re-runs when data changes, so an
+          // overdue flag computed here would never flip on time alone.
+          dueAt: start != null ? start + OVERDUE_MS : null,
           overdue: !hasReport && start != null && start + OVERDUE_MS < now,
         };
       })

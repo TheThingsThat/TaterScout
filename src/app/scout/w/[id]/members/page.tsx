@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import {
@@ -103,9 +103,11 @@ function DelegationPanel({
   const assignMatches = useMutation(api.assignments.autoAssignMatches);
   const assignPits = useMutation(api.assignments.autoAssignPits);
   const [pickedTeams, setPickedTeams] = useState<Set<number>>(new Set());
-  const [pickedScouts, setPickedScouts] = useState<Set<Id<"members">>>(
-    new Set(members.map((m) => m._id)),
-  );
+  // Track who's been UNchecked (default = everyone selected). Storing the
+  // exclusions means a member joining/leaving mid-setup doesn't wipe the
+  // admin's in-progress selection or leave a stale id behind.
+  const [excludedScouts, setExcludedScouts] = useState<Set<Id<"members">>>(new Set());
+  const pickedScouts = new Set(members.map((m) => m._id).filter((mid) => !excludedScouts.has(mid)));
   const [busy, setBusy] = useState(false);
   const [teamQ, setTeamQ] = useState("");
 
@@ -153,7 +155,7 @@ function DelegationPanel({
           {members.map((m) => (
             <button
               key={m._id}
-              onClick={() => setPickedScouts(toggle(pickedScouts, m._id))}
+              onClick={() => setExcludedScouts(toggle(excludedScouts, m._id))}
               className={`rounded-full border px-2.5 py-1 text-[12px] ${
                 pickedScouts.has(m._id) ? "border-accent bg-accent/15 text-accent" : "border-[#232323] text-muted"
               }`}
@@ -220,6 +222,7 @@ type MatchAssign = {
   memberId: Id<"members">;
   predictedTime: number | null;
   hasReport: boolean;
+  dueAt: number | null;
   overdue: boolean;
 };
 type PitAssign = { _id: Id<"assignments">; teamNumber: number; memberId: Id<"members">; hasReport: boolean };
@@ -304,13 +307,24 @@ function ScoutColumn({
 
 function MatchAssignments({ id }: { id: Id<"workspaces"> }) {
   const board = useQuery(api.assignments.matchBoard, { workspaceId: id });
+  const ws = useQuery(api.workspaces.get, { workspaceId: id });
+  const tz = ws?.workspace.timezone ?? undefined;
+  // A reactive query only re-runs when data changes, so re-evaluate lateness
+  // against the wall clock here (ticking each minute).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const isOverdue = (a: MatchAssign) =>
+    !a.hasReport && a.dueAt != null && a.dueAt < nowMs;
   const reassign = useMutation(api.assignments.reassign);
   const unassign = useMutation(api.assignments.unassign);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   if (board === undefined) return <div className="text-sm text-muted">Loading…</div>;
   const assigns = board.assignments as MatchAssign[];
-  const overdue = assigns.filter((a) => a.overdue);
+  const overdue = assigns.filter(isOverdue);
 
   function onDragEnd(evt: DragEndEvent) {
     const { active, over } = evt;
@@ -355,15 +369,15 @@ function MatchAssignments({ id }: { id: Id<"workspaces"> }) {
                 memberId={m._id}
                 name={m.name}
                 count={mine.length}
-                overdueCount={mine.filter((a) => a.overdue).length}
+                overdueCount={mine.filter(isOverdue).length}
               >
                 {mine.map((a) => (
                   <AssignCard
                     key={a._id}
                     aid={a._id}
                     label={`Q${a.matchNumber}`}
-                    sub={`team ${a.teamNumber}${a.predictedTime ? ` · ~${formatClock(a.predictedTime)}` : ""}`}
-                    status={a.hasReport ? "done" : a.overdue ? "overdue" : "pending"}
+                    sub={`team ${a.teamNumber}${a.predictedTime ? ` · ~${formatClock(a.predictedTime, tz)}` : ""}`}
+                    status={a.hasReport ? "done" : isOverdue(a) ? "overdue" : "pending"}
                     onRemove={() => unassign({ assignmentId: a._id })}
                   />
                 ))}
@@ -490,7 +504,7 @@ function Members({ id }: { id: Id<"workspaces"> }) {
           <div className={`${CARD} text-center text-sm text-muted`}>Import an event first (Setup).</div>
         ) : (
           <div className="space-y-4">
-            <DelegationPanel key={`${sub}-${members.length}`} id={id} kind={sub} teams={teamList} members={members} />
+            <DelegationPanel key={sub} id={id} kind={sub} teams={teamList} members={members} />
             {sub === "match" ? <MatchAssignments id={id} /> : <PitAssignments id={id} />}
           </div>
         )}

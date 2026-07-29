@@ -3,6 +3,7 @@ import { getEvent } from "@/lib/ftc/queries";
 import { ensureLoaded } from "@/lib/data/store";
 import { getRankingMap, getSeasonCyclePrior } from "@/lib/rankings";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
+import { isKnownSeason, isValidEventCode } from "@/lib/season";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,11 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code")?.trim().toUpperCase();
   if (!season || !code) {
     return NextResponse.json({ error: "season and code are required" }, { status: 400 });
+  }
+  // Both reach credentialed FIRST API URLs — reject anything unexpected so this
+  // public route can't be used to probe arbitrary upstream paths.
+  if (!isKnownSeason(season) || !isValidEventCode(code)) {
+    return NextResponse.json({ error: "Invalid season or event code." }, { status: 400 });
   }
 
   await ensureLoaded(season);
@@ -66,5 +72,5 @@ export async function GET(req: NextRequest) {
     blueScore: m.scores?.blue?.totalPoints ?? null,
   }));
 
-  return NextResponse.json({ eventName: ev.name, teams, matches });
+  return NextResponse.json({ eventName: ev.name, timezone: ev.timezone, teams, matches });
 }

@@ -19,6 +19,15 @@ interface FirstOpts {
   revalidate?: number;
 }
 
+/** Percent-encode each path segment (leaving the query string alone) so an
+ *  interpolated event code can't inject extra path or query segments. */
+function safePath(path: string): string {
+  const qIdx = path.indexOf("?");
+  const p = qIdx === -1 ? path : path.slice(0, qIdx);
+  const query = qIdx === -1 ? "" : path.slice(qIdx);
+  return p.split("/").map(encodeURIComponent).join("/") + query;
+}
+
 /**
  * GET a FIRST API path (season included, e.g. `2025/events?eventCode=X`).
  * Returns null on 404. Retries with backoff on 429/errors; per-request timeout.
@@ -33,7 +42,7 @@ export async function firstGet<T>(path: string, opts: FirstOpts = {}): Promise<T
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(`${BASE}/${path}`, init);
+      const res = await fetch(`${BASE}/${safePath(path)}`, init);
       if (res.status === 429) {
         await sleep(1000 * (attempt + 1));
         continue;

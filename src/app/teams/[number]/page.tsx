@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getTeam, getEventMatches, getSeasonRecord } from "@/lib/ftc/queries";
-import { CURRENT_SEASON, seasonFull, seasonLabel } from "@/lib/season";
+import { CURRENT_SEASON, seasonFull, seasonLabel, parseSeasonParam } from "@/lib/season";
 import { eventTypeLabel, formatAward } from "@/lib/ftc/labels";
 import { formatDate, formatClock, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
@@ -79,10 +79,8 @@ interface Props {
   searchParams: Promise<{ season?: string }>;
 }
 
-function parseSeason(raw?: string): number {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 2018 ? n : CURRENT_SEASON;
-}
+// Clamp to seasons we have data for — this drives dataset reads and FIRST calls.
+const parseSeason = parseSeasonParam;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { number } = await params;

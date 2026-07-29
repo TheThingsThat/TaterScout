@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getEvent } from "@/lib/ftc/queries";
-import { seasonFull } from "@/lib/season";
+import { seasonFull, isKnownSeason, isValidEventCode } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
 import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
@@ -62,7 +62,9 @@ function StatusBadge({ ongoing, finished }: { ongoing: boolean; finished: boolea
 export default async function EventPage({ params, searchParams }: Props) {
   const { season: seasonStr, code } = await params;
   const season = Number(seasonStr);
-  if (!Number.isInteger(season)) notFound();
+  // Clamp both: they flow into dataset reads and credentialed FIRST API paths.
+  if (!Number.isInteger(season) || !isKnownSeason(season)) notFound();
+  if (!isValidEventCode(code.toUpperCase())) notFound();
 
   await ensureLoaded(season); // hydrate the data store (Blob/file) before sync accessors
   scheduleAutoRefresh(season); // post-response staleness check (never blocks)

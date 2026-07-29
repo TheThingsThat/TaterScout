@@ -123,6 +123,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
   const schedule = useQuery(api.match.schedule, { workspaceId: id });
   const mine = useQuery(api.assignments.mySchedule, { workspaceId: id });
   const claim = useMutation(api.match.claim);
+  const unclaim = useMutation(api.match.unclaim);
   const submit = useMutation(api.match.submitReport);
 
   const [matchNumber, setMatchNumber] = useState<number | null>(null);
@@ -187,6 +188,18 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
       resetForm();
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  }
+
+  /** Back out of a robot: release the claim so someone else can scout it. */
+  async function releaseTeam() {
+    const n = team;
+    setTeam(null);
+    if (n == null || matchNumber == null) return;
+    try {
+      await unclaim({ workspaceId: id, matchNumber, teamNumber: n });
+    } catch {
+      /* best-effort — the claim frees on submit anyway */
     }
   }
 
@@ -287,8 +300,8 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
           <select
             value={matchNumber ?? ""}
             onChange={(e) => {
+              void releaseTeam();
               setMatchNumber(e.target.value ? Number(e.target.value) : null);
-              setTeam(null);
             }}
             className="w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]"
           >
@@ -310,7 +323,10 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
                 const side = sideOf(match, n);
                 const c = claimedBy(n);
                 const done = reported(n);
-                const disabled = done || !!c;
+                // Your own claim stays tappable — otherwise backing out of a
+                // robot would lock it away from everyone, including you.
+                const mineClaim = c != null && c.memberId === data?.member._id;
+                const disabled = !!done || (!!c && !mineClaim);
                 return (
                   <button
                     key={n}
@@ -321,7 +337,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
                   >
                     <div className="font-mono text-[15px] font-bold">{n}</div>
                     <div className="text-[11px] text-muted">
-                      {done ? "reported" : c ? `taken · ${c.by}` : "tap to scout"}
+                      {done ? "reported" : mineClaim ? "resume ·  yours" : c ? `taken · ${c.by}` : "tap to scout"}
                     </div>
                   </button>
                 );
@@ -338,7 +354,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
             <div className="text-[15px] font-semibold">
               Q{matchNumber} · Team <span className="font-mono">{team}</span>
             </div>
-            <button onClick={() => setTeam(null)} className="text-[13px] text-muted hover:text-foreground">
+            <button onClick={releaseTeam} className="text-[13px] text-muted hover:text-foreground">
               change
             </button>
           </div>

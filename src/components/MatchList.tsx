@@ -20,12 +20,14 @@ function AllianceCell({
   won,
   align,
   allianceLabel,
+  season,
 }: {
   teams: MatchTeam[];
   side: "Red" | "Blue";
   won: boolean;
   align: "left" | "right";
   allianceLabel?: string; // e.g. "Alliance 1" (playoff matches)
+  season: number;
 }) {
   const color = won ? (side === "Red" ? "#ff5d6c" : "#4d8dff") : "#6b6f78";
   return (
@@ -42,7 +44,7 @@ function AllianceCell({
       {teams.map((t) => (
         <Link
           key={t.teamNumber}
-          href={`/teams/${t.teamNumber}`}
+          href={`/teams/${t.teamNumber}?season=${season}`}
           className="font-mono text-[13px] hover:underline"
           style={{ color, fontWeight: won ? 700 : 400 }}
         >
@@ -60,12 +62,14 @@ function MatchRow({
   timezone,
   winProb,
   allianceOf,
+  season,
 }: {
   m: Match;
   predicted?: number;
   timezone?: string;
   winProb?: number; // red win probability 0..1 (unplayed matches)
   allianceOf?: Map<number, number>; // team -> playoff alliance number
+  season: number;
 }) {
   const red = m.teams
     .filter((t) => t.alliance === "Red")
@@ -94,7 +98,7 @@ function MatchRow({
     <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] transition-colors first:border-t-0 hover:bg-[#101010]">
       <span className="font-mono text-[12px] text-[#6b6f78]">{matchCode(m)}</span>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <AllianceCell teams={red} side="Red" won={redWon} align="right" allianceLabel={allyLabel(red)} />
+        <AllianceCell teams={red} side="Red" won={redWon} align="right" allianceLabel={allyLabel(red)} season={season} />
         {played ? (
           <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
             <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
@@ -126,7 +130,7 @@ function MatchRow({
             ) : null}
           </div>
         )}
-        <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" allianceLabel={allyLabel(blue)} />
+        <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" allianceLabel={allyLabel(blue)} season={season} />
       </div>
     </div>
   );
@@ -134,6 +138,7 @@ function MatchRow({
 
 export default function MatchList({
   matches,
+  season,
   predictions,
   winProbs,
   timezone,
@@ -183,6 +188,7 @@ export default function MatchList({
                 winProb={winProbs?.get(matchKey(m))}
                 timezone={timezone}
                 allianceOf={allianceOf}
+                season={season}
               />
             ))}
           </div>

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchAll } from "@/lib/ftc/queries";
-import { CURRENT_SEASON } from "@/lib/season";
+import { parseSeasonParam } from "@/lib/season";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
-  const season =
-    Number(req.nextUrl.searchParams.get("season")) || CURRENT_SEASON;
+  const season = parseSeasonParam(req.nextUrl.searchParams.get("season"));
 
   if (q.length < 2) {
     return NextResponse.json({ teams: [], events: [] });

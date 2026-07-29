@@ -16,6 +16,7 @@ export default defineSchema({
     season: v.number(),
     eventCode: v.string(),
     eventName: v.optional(v.string()),
+    timezone: v.optional(v.string()), // event-local tz, so times match the venue
     joinCode: v.string(), // scouts join with this
     adminUserId: v.id("users"), // creator
     createdAt: v.number(),

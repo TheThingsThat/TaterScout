@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireAdmin } from "./lib";
+import { requireAdmin, checkLen } from "./lib";
 import type { Id } from "./_generated/dataModel";
 
 // Unambiguous join code (no 0/O/1/I).
@@ -24,6 +24,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not signed in.");
+    checkLen(args.name, 80, "Workspace name");
+    checkLen(args.displayName, 60, "Your name");
     // A unique join code (retry a few times on the rare collision).
     let joinCode = makeJoinCode();
     for (let i = 0; i < 5; i++) {
@@ -52,7 +54,8 @@ export const create = mutation({
   },
 });
 
-/** Delete every scouting doc for a workspace (used when the event changes). */
+/** Delete every scouting doc for a workspace, plus the imported event snapshot
+ *  (used when the event changes — all of it belonged to the old event). */
 async function clearScoutingData(ctx: MutationCtx, workspaceId: Id<"workspaces">) {
   const reports = await ctx.db
     .query("matchReports")
@@ -74,7 +77,19 @@ async function clearScoutingData(ctx: MutationCtx, workspaceId: Id<"workspaces">
     .query("shortlist")
     .withIndex("by_workspace_member", (q) => q.eq("workspaceId", workspaceId))
     .collect();
-  for (const r of [...reports, ...pits, ...claims, ...assigns, ...shorts]) await ctx.db.delete(r._id);
+  // Old event's roster + schedule, so a failed re-import can't leave stale data
+  // that scouts could file reports against.
+  const teamRows = await ctx.db
+    .query("teamEvents")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  const matchRows = await ctx.db
+    .query("matches")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const r of [...reports, ...pits, ...claims, ...assigns, ...shorts, ...teamRows, ...matchRows]) {
+    await ctx.db.delete(r._id);
+  }
 }
 
 /** Set (or change) the workspace's event — admin only. Changing the event code
@@ -84,16 +99,18 @@ export const setEvent = mutation({
     workspaceId: v.id("workspaces"),
     eventCode: v.string(),
     eventName: v.optional(v.string()),
+    timezone: v.optional(v.string()),
   },
-  handler: async (ctx, { workspaceId, eventCode, eventName }) => {
+  handler: async (ctx, { workspaceId, eventCode, eventName, timezone }) => {
     await requireAdmin(ctx, workspaceId);
+    checkLen(eventName, 200, "Event name");
     const ws = await ctx.db.get(workspaceId);
     const next = eventCode.trim().toUpperCase();
     if (ws && ws.eventCode && ws.eventCode !== next) {
       await clearScoutingData(ctx, workspaceId);
-      await ctx.db.patch(workspaceId, { eventCode: next, eventName, myTeam: undefined });
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName, timezone, myTeam: undefined });
     } else {
-      await ctx.db.patch(workspaceId, { eventCode: next, eventName });
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName, timezone });
     }
   },
 });
@@ -122,6 +139,7 @@ export const join = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not signed in.");
+    checkLen(args.displayName, 60, "Your name");
     const ws = await ctx.db
       .query("workspaces")
       .withIndex("by_joinCode", (q) => q.eq("joinCode", args.joinCode.trim().toUpperCase()))
@@ -144,6 +162,7 @@ export const join = mutation({
 
 /** Workspaces the signed-in user belongs to (for the dashboard). */
 export const mine = query({
+  args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
