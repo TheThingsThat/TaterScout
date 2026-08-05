@@ -2,7 +2,7 @@
 // One event = matches (all levels, one call) joined with the per-level score
 // breakdowns (auto/teleop/RP). Team names + regions come from FIRST's teams
 // endpoint. OPR is NOT provided by FIRST — we compute it in compute.ts.
-import { firstGet } from "../ftc/first";
+import { firstGet, firstGetConditional } from "../ftc/first";
 import { normalizeEventType } from "../ftc/labels";
 import type { RawEvent, RawMatch } from "./types";
 
@@ -263,28 +263,62 @@ export interface DeltaResult {
   updatedEvents: string[];
   newMatches: number;
   windowSize: number; // active-window events scanned (0 = idle/off-season)
+  skipped304: number; // events skipped via If-Modified-Since (no fetch beyond the probe)
+  tokens: { path: string; lastModified: string }[]; // fresh Last-Modified values to persist
 }
 
-/** Re-ingest the active-window events (few) and merge; report only real changes.
- *  `opts` scopes the window — pass `{ lookbackDays: 0, lookaheadDays: 0 }` for the
- *  cheap ongoing-only live path; omit for the default ±14/+3-day sweep. */
+/** Re-ingest the active-window events and merge; report only real changes.
+ *
+ *  The upstream gate (Statbotics pattern): each event's /matches call goes out
+ *  with If-Modified-Since from `freshness` — a 304 skips the event entirely
+ *  (its scores/teams/detail calls too, a 4-5x cut in FIRST traffic). On a 200
+ *  the matches body is REUSED for the build (no double fetch), and the existing
+ *  modifiedOn/match-count comparison stays as the change backstop.
+ *
+ *  `opts` scopes the window — `{ lookbackDays: 0, lookaheadDays: 0 }` is the
+ *  cheap ongoing-only live path; omit for the ±14/+3-day wide sweep. */
 export async function fetchDeltas(
   season: number,
   current: RawEvent[],
-  opts: { lookbackDays?: number; lookaheadDays?: number } = {},
+  opts: { lookbackDays?: number; lookaheadDays?: number; window?: string[] } = {},
+  freshness: Record<string, string> = {},
 ): Promise<DeltaResult> {
   const byCode = new Map(current.map((e) => [e.code, e]));
-  const window = await fetchActiveWindow(season, opts.lookbackDays, opts.lookaheadDays);
+  const window =
+    opts.window ?? (await fetchActiveWindow(season, opts.lookbackDays, opts.lookaheadDays));
 
   const events = [...current];
   const newEvents: string[] = [];
   const updatedEvents: string[] = [];
+  const tokens: { path: string; lastModified: string }[] = [];
   let newMatches = 0;
+  let skipped304 = 0;
 
   for (const code of window) {
     let fresh: RawEvent | null = null;
     try {
-      fresh = await fetchEvent(season, code);
+      const path = `${season}/matches/${code}`;
+      const probe = await firstGetConditional<{ matches: FirstMatch[] }>(
+        path,
+        freshness[`matches/${code}`],
+      );
+      if (probe.notModified) {
+        skipped304++;
+        continue;
+      }
+      if (!probe.data) continue; // 404 — no matches posted yet
+      if (probe.lastModified) tokens.push({ path: `matches/${code}`, lastModified: probe.lastModified });
+
+      const [detailR, qs, ps, teamInfo] = await Promise.all([
+        getEventDetail(season, code),
+        getScores(season, code, "qual"),
+        getScores(season, code, "playoff"),
+        fetchEventTeams(season, code),
+      ]);
+      const detail = detailR?.events?.[0];
+      if (!detail) continue;
+      const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
+      fresh = buildRawEvent(detail, probe.data.matches ?? [], scores, teamInfo);
     } catch {
       continue;
     }
@@ -316,5 +350,7 @@ export async function fetchDeltas(
     updatedEvents,
     newMatches,
     windowSize: window.length,
+    skipped304,
+    tokens,
   };
 }

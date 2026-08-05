@@ -1,4 +1,6 @@
-import { getTrajectoriesData } from "@/lib/data/store";
+import { getTrajectoriesData, ensureLoaded } from "@/lib/data/store";
+import { convexBackendEnabled } from "@/lib/data/backend";
+import { siteTrajectory } from "@/lib/data/convexSite";
 
 // Compact stored point:
 // [tMinutes, eventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, matchNum?, series?]
@@ -41,25 +43,23 @@ export interface Trajectory {
   segments: EventSegment[];
 }
 
-// Read from the in-process store (refreshable at runtime).
-function load(season: number): FileShape | null {
-  return getTrajectoriesData(season) as unknown as FileShape | null;
-}
-
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
-export function getTrajectory(season: number, team: number): Trajectory | null {
-  const f = load(season);
-  const raw = f?.teams[String(team)];
-  if (!f || !raw || raw.length === 0) return null;
-
+// Shared transform: points reference `events` by index (global list for the
+// file backend, per-team local list for the Convex doc — same code path).
+function build(
+  t0: number,
+  events: { c: string; n: string | null; s: string | null }[],
+  raw: RawPoint[],
+): Trajectory | null {
+  if (raw.length === 0) return null;
   const points: TrajPoint[] = raw.map((p, i) => {
-    const ev = f.events[p[1]];
+    const ev = events[p[1]];
     const oa = p[5];
     const ot = p[6];
     return {
       i,
-      time: f.t0 + p[0] * 60000,
+      time: t0 + p[0] * 60000,
       eventCode: ev?.c ?? "",
       eventName: ev?.n ?? null,
       playoff: p[2] === 1,
@@ -93,4 +93,19 @@ export function getTrajectory(season: number, team: number): Trajectory | null {
     }
   }
   return { points, segments };
+}
+
+export async function getTrajectory(season: number, team: number): Promise<Trajectory | null> {
+  if (convexBackendEnabled()) {
+    const r = await siteTrajectory(season, team);
+    if (r) {
+      if (!r.v) return null;
+      return build(r.v.t0, r.v.events, r.v.points as RawPoint[]);
+    }
+  }
+  await ensureLoaded(season);
+  const f = getTrajectoriesData(season) as unknown as FileShape | null;
+  const raw = f?.teams[String(team)];
+  if (!f || !raw) return null;
+  return build(f.t0, f.events, raw);
 }

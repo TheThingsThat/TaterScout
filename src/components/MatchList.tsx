@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Match, MatchTeam } from "@/lib/ftc/types";
 import { tournamentLevelLabel } from "@/lib/ftc/labels";
-import { formatClock } from "@/lib/format";
 import Collapsible from "./Collapsible";
+import LocalClock from "./LocalClock";
 
 function matchCode(m: Match): string {
   if (m.tournamentLevel === "Quals") return `Q${m.matchNum}`;
@@ -122,8 +122,11 @@ function MatchRow({
               </div>
             ) : null}
             {predicted != null ? (
-              <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]" title="Predicted start time">
-                ~{formatClock(predicted, timezone)}
+              <span
+                className="whitespace-nowrap text-[11px] italic text-[#6b6f78]"
+                title="Predicted start time (your local time)"
+              >
+                ~<LocalClock ms={predicted} fallbackTimezone={timezone} />
               </span>
             ) : winProb == null ? (
               <span className="text-[12px] text-[#6b6f78]">vs</span>

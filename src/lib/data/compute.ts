@@ -6,10 +6,22 @@ import { computeEpa, type EpaMatch, type EpaTrajPoint } from "../epa/engine";
 import { solveEventOpr, type AllianceObs, type Triple } from "../epa/opr";
 import { computeSeasonCyclePriors } from "../predict/matchTimes";
 import { computeSimModel, type SimMatch } from "../predict/model";
-import type { ComputedData, RawEvent, TeamRow } from "./types";
+import type { ComputedData, RawEvent, RawMatch, TeamRow } from "./types";
 
 const round = (x: number) => Math.round(x * 100) / 100;
 const r1 = (x: number) => Math.round(x * 10) / 10;
+
+/**
+ * A match counts toward ratings only when all four robots took the field.
+ *
+ * Both models assume an alliance score is the sum of TWO teams' contributions:
+ * EPA compares that sum to the actual score, OPR least-squares-attributes it.
+ * An uneven alliance (no-show or removed robot) breaks that assumption and would
+ * dump the whole shortfall onto whoever did show up, so EPA and OPR skip the
+ * match alike. Our raw crawl already keeps only on-field robots, so "length 2"
+ * IS the all-four-present test.
+ */
+const isFullMatch = (m: RawMatch) => m.red.length === 2 && m.blue.length === 2;
 
 function rankBy<T>(items: T[], key: (t: T) => number | null): Map<T, number> {
   const ranked = items
@@ -24,28 +36,33 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
   const matchCount = events.reduce((s, e) => s + e.matches.length, 0);
 
   // --- EPA (global chronological replay, with per-match trajectories) ---
+  // Uneven matches are passed through as `rated: false`: they never move a
+  // rating, but they still produce a trajectory point so the chart shows every
+  // match a team played (flat, labelled) instead of quietly closing the gap.
   const epaMatches: EpaMatch[] = [];
   for (const e of events)
-    for (const m of e.matches)
+    for (const m of e.matches) {
       epaMatches.push({
         time: m.time, redTeams: m.red, blueTeams: m.blue,
         redAuto: m.ra, redTeleop: m.rt, blueAuto: m.ba, blueTeleop: m.bt,
         eventCode: e.code, playoff: m.level !== "Quals", matchKey: m.key,
+        rated: isFullMatch(m),
       });
+    }
   const epaTraj = new Map<number, EpaTrajPoint[]>();
   const { teams: epa, config: epaCfg } = computeEpa(epaMatches, {}, epaTraj);
 
   // --- OPR (computed locally — FIRST provides none). Per-event final solve over
-  //     QUALIFICATION matches only, no-show/uneven matches excluded (playoff
-  //     alliances are hand-picked → break OPR additivity). Season value = the
-  //     per-component MAX across a team's events (the season leaderboard value).
+  //     QUALIFICATION matches only, uneven matches excluded exactly as EPA does
+  //     (playoff alliances are hand-picked → break OPR additivity). Season value
+  //     = the per-component MAX across a team's events (leaderboard value).
   const eventFinalOpr = new Map<string, Map<number, Triple>>();
   const seasonOpr = new Map<number, Triple>();
   for (const e of events) {
     const obs: AllianceObs[] = [];
     for (const m of e.matches) {
       if (m.level !== "Quals") continue;
-      if (m.red.length !== 2 || m.blue.length !== 2) continue; // skip no-show / uneven
+      if (!isFullMatch(m)) continue;
       obs.push({ teams: m.red, v: [m.ra + m.rt, m.ra, m.rt] });
       obs.push({ teams: m.blue, v: [m.ba + m.bt, m.ba, m.bt] });
     }
@@ -60,15 +77,21 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
     }
   }
 
-  // Cumulative OPR after EVERY match (for the trajectory chart). No-shows kept.
+  // Cumulative OPR after every match (trajectory chart). Uneven matches add no
+  // observations — same filter as the final solve — but still record the
+  // running value so the chart's OPR line carries forward flat rather than
+  // breaking into a gap.
   const oprAtMatch = new Map<string, Triple>();
   for (const e of events) {
     const ms = [...e.matches].sort((a, b) => a.time - b.time);
     const obs: AllianceObs[] = [];
+    let sol = new Map<number, Triple>();
     for (const m of ms) {
-      obs.push({ teams: m.red, v: [m.ra + m.rt, m.ra, m.rt] });
-      obs.push({ teams: m.blue, v: [m.ba + m.bt, m.ba, m.bt] });
-      const sol = solveEventOpr(obs);
+      if (isFullMatch(m)) {
+        obs.push({ teams: m.red, v: [m.ra + m.rt, m.ra, m.rt] });
+        obs.push({ teams: m.blue, v: [m.ba + m.bt, m.ba, m.bt] });
+        sol = solveEventOpr(obs);
+      }
       for (const t of [...m.red, ...m.blue]) {
         const v = sol.get(t);
         if (v) oprAtMatch.set(`${m.key}|${t}`, v);
@@ -76,14 +99,10 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
     }
   }
 
-  // No-show flags + real match numbers for the trajectory hover label.
-  const noShowByKey = new Map<string, boolean>();
+  // Real match numbers for the trajectory hover label.
   const matchMeta = new Map<string, { num: number; series: number }>();
   for (const e of events)
-    for (const m of e.matches) {
-      if (m.red.length !== 2 || m.blue.length !== 2) noShowByKey.set(m.key, true);
-      matchMeta.set(m.key, { num: m.num, series: m.series });
-    }
+    for (const m of e.matches) matchMeta.set(m.key, { num: m.num, series: m.series });
 
   // --- Names + region (from FIRST: the team's homeRegion, constant per team) ---
   const names = new Map<number, string>();
@@ -192,7 +211,7 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
         r1(p.teleop),
         o ? r1(o[1]) : null,
         o ? r1(o[2]) : null,
-        noShowByKey.get(p.matchKey) ? 1 : 0,
+        p.rated ? 0 : 1, // 1 = played but not rated (uneven alliance)
         meta?.num ?? 0,
         meta?.series ?? 0,
       ];

@@ -4,17 +4,17 @@ import type { Metadata } from "next";
 import { getTeam, getEventMatches, getSeasonRecord } from "@/lib/ftc/queries";
 import { CURRENT_SEASON, seasonFull, seasonLabel, parseSeasonParam } from "@/lib/season";
 import { eventTypeLabel, formatAward } from "@/lib/ftc/labels";
-import { formatDate, formatClock, locationStr } from "@/lib/format";
+import { formatDate, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getTrajectory } from "@/lib/trajectory";
 import type { QuickStats } from "@/lib/ftc/types";
-import { ensureLoaded } from "@/lib/data/store";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
 import EpaTiles from "@/components/EpaTiles";
 import TrajectoryChart from "@/components/TrajectoryChart";
 import LiveRefresh from "@/components/LiveRefresh";
+import LocalClock from "@/components/LocalClock";
 
 interface NextMatch {
   label: string;
@@ -35,8 +35,9 @@ async function findNextMatch(
     ),
   );
   let best: NextMatch | null = null;
-  results.forEach((res, i) => {
-    if (!res) return;
+  for (let i = 0; i < results.length; i++) {
+    const res = results[i];
+    if (!res) continue;
     const ev = ongoingEventCodes[i];
     const quals = res.matches.filter((m) => m.tournamentLevel === "Quals");
     const sched: SchedMatch[] = quals.map((m) => ({
@@ -47,7 +48,7 @@ async function findNextMatch(
     }));
     const { predicted } = predictMatchTimes(sched, {
       ...FTC_DEFAULTS,
-      seasonPriorSec: getSeasonCyclePrior(season, ev.type),
+      seasonPriorSec: await getSeasonCyclePrior(season, ev.type),
     });
     const mine = quals
       .filter(
@@ -70,7 +71,7 @@ async function findNextMatch(
         };
       }
     }
-  });
+  }
   return best;
 }
 
@@ -103,7 +104,6 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const num = Number(number);
   if (!Number.isInteger(num)) notFound();
 
-  await ensureLoaded(season); // hydrate the data store before sync accessors
   scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const team = await getTeam(num, season);
@@ -114,9 +114,9 @@ export default async function TeamPage({ params, searchParams }: Props) {
       ? [...new Set(team.activeSeasons)].sort((a, b) => b - a)
       : [CURRENT_SEASON];
 
-  const epa = getTeamRanking(season, num);
-  const epaTeamCount = getTeamCount(season);
-  const traj = getTrajectory(season, num);
+  const epa = await getTeamRanking(season, num);
+  const epaTeamCount = await getTeamCount(season);
+  const traj = await getTrajectory(season, num);
 
   // Season OPR tiles come from our own store (FIRST has no season OPR). Endgame
   // is folded into TeleOp, so only three tiles show.
@@ -161,7 +161,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
             </span>
             <span className="font-mono text-[15px] font-bold">{nextMatch.label}</span>
             <span className="text-[14px] text-muted">
-              ~{formatClock(nextMatch.time, nextMatch.timezone)}
+              ~<LocalClock ms={nextMatch.time} fallbackTimezone={nextMatch.timezone} />
             </span>
           </div>
           <Link

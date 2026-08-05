@@ -99,18 +99,17 @@ export const setEvent = mutation({
     workspaceId: v.id("workspaces"),
     eventCode: v.string(),
     eventName: v.optional(v.string()),
-    timezone: v.optional(v.string()),
   },
-  handler: async (ctx, { workspaceId, eventCode, eventName, timezone }) => {
+  handler: async (ctx, { workspaceId, eventCode, eventName }) => {
     await requireAdmin(ctx, workspaceId);
     checkLen(eventName, 200, "Event name");
     const ws = await ctx.db.get(workspaceId);
     const next = eventCode.trim().toUpperCase();
     if (ws && ws.eventCode && ws.eventCode !== next) {
       await clearScoutingData(ctx, workspaceId);
-      await ctx.db.patch(workspaceId, { eventCode: next, eventName, timezone, myTeam: undefined });
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName, myTeam: undefined });
     } else {
-      await ctx.db.patch(workspaceId, { eventCode: next, eventName, timezone });
+      await ctx.db.patch(workspaceId, { eventCode: next, eventName });
     }
   },
 });

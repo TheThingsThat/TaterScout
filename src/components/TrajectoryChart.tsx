@@ -193,6 +193,25 @@ export default function TrajectoryChart({
           );
         })}
 
+        {/* Matches the team played that couldn't be rated (an alliance was a
+            robot short). The rating line runs flat through these, so mark them
+            or they'd read as an ordinary stretch of no improvement. */}
+        {points.map((p, i) =>
+          p.noShow ? (
+            <line
+              key={`ns-${i}`}
+              x1={xAt(i)}
+              y1={PAD.t}
+              x2={xAt(i)}
+              y2={PAD.t + PLOT_H}
+              stroke="#6b6f78"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity={0.5}
+            />
+          ) : null,
+        )}
+
         {points.map((p, i) => {
           if (!p.playoff) return null;
           // Clamp to the plot area so a trailing playoff point doesn't render a
@@ -257,7 +276,9 @@ export default function TrajectoryChart({
                 )}
               </span>
               {hp.noShow && (
-                <span className="text-[10px] font-normal text-[#6b6f78]">no show</span>
+                <span className="text-[10px] font-normal text-[#6b6f78]">
+                  not rated · alliance a robot short
+                </span>
               )}
             </span>
             <span className="text-[#6b6f78]">

@@ -31,7 +31,9 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
-/** Clock time like "3:45 PM" in the event's local timezone. */
+/** Clock time like "3:45 PM". With no `timezone` it uses the runtime's zone —
+ *  in the browser that's the VIEWER's local time (the site-wide convention for
+ *  match times; see components/LocalClock for server-rendered pages). */
 export function formatClock(
   value: string | number | null | undefined,
   timezone?: string,

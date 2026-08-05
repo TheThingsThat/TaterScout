@@ -68,7 +68,15 @@ export default function EpaTiles({
       <div className="col-span-2 rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
         <div className="flex items-baseline justify-between">
           <Label>Total EPA</Label>
-          <span className="text-[11px] text-[#6b6f78]">{team.n} matches</span>
+          {/* `n` is the rating's sample size: qualification matches with a full
+              2v2 field. Playoffs and robot-short matches are excluded, so this
+              can read lower than the team's total matches played. */}
+          <span
+            className="text-[11px] text-[#6b6f78]"
+            title="Qualification matches with a full alliance on both sides — the sample behind this rating"
+          >
+            {team.n} rated matches
+          </span>
         </div>
         <div className="mt-2.5 flex items-baseline gap-2">
           <span className="text-[34px] font-bold tabular-nums" style={{ color: EPA }}>

@@ -32,6 +32,52 @@ function safePath(path: string): string {
  * GET a FIRST API path (season included, e.g. `2025/events?eventCode=X`).
  * Returns null on 404. Retries with backoff on 429/errors; per-request timeout.
  */
+export interface ConditionalResult<T> {
+  notModified: boolean;
+  data: T | null; // null when notModified or 404
+  lastModified: string | null;
+}
+
+/**
+ * Conditional GET (crawl path, no-store): sends If-Modified-Since when a token
+ * is provided; a 304 comes back as `notModified` without a body. FIRST's
+ * /matches endpoints honor this with real 304s (verified), which turns a no-op
+ * sync into a handful of free checks.
+ */
+export async function firstGetConditional<T>(
+  path: string,
+  ifModifiedSince?: string | null,
+): Promise<ConditionalResult<T>> {
+  const headers: Record<string, string> = {
+    Authorization: authHeader(),
+    Accept: "application/json",
+  };
+  if (ifModifiedSince) headers["If-Modified-Since"] = ifModifiedSince;
+  const init: RequestInit = { headers, cache: "no-store", signal: AbortSignal.timeout(15000) };
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/${safePath(path)}`, init);
+      if (res.status === 429) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
+      if (res.status === 304) return { notModified: true, data: null, lastModified: ifModifiedSince ?? null };
+      if (res.status === 404) return { notModified: false, data: null, lastModified: null };
+      if (!res.ok) throw new Error(`FIRST API ${res.status} on ${path}`);
+      return {
+        notModified: false,
+        data: (await res.json()) as T,
+        lastModified: res.headers.get("last-modified"),
+      };
+    } catch (e) {
+      if (attempt === 3) throw e;
+      await sleep(500 * (attempt + 1));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 export async function firstGet<T>(path: string, opts: FirstOpts = {}): Promise<T | null> {
   const init: RequestInit = {
     headers: { Authorization: authHeader(), Accept: "application/json" },

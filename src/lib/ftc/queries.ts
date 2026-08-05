@@ -4,6 +4,8 @@
 import { firstGet } from "./first";
 import { normalizeEventType } from "./labels";
 import { ensureLoaded, getRankingsData } from "../data/store";
+import { convexBackendEnabled } from "../data/backend";
+import { siteMeta, siteSearch } from "../data/convexSite";
 import type {
   Team,
   TeamSearchResult,
@@ -415,6 +417,15 @@ export async function getSeasonRecord(
 export async function getSeasonSnapshot(
   season: number,
 ): Promise<{ activeTeamsCount: number; matchesPlayedCount: number }> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) {
+      return {
+        activeTeamsCount: r.v?.teamCount ?? 0,
+        matchesPlayedCount: r.v?.matchCount ?? 0,
+      };
+    }
+  }
   await ensureLoaded(season);
   const r = getRankingsData(season);
   return {
@@ -433,8 +444,15 @@ export interface WorldRecord {
 }
 
 export async function getWorldRecord(season: number): Promise<WorldRecord | null> {
-  await ensureLoaded(season);
-  const wr = getRankingsData(season)?.worldRecord;
+  let wr = null;
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) wr = r.v?.worldRecord ?? null;
+  }
+  if (!wr) {
+    await ensureLoaded(season);
+    wr = getRankingsData(season)?.worldRecord ?? null;
+  }
   if (!wr) return null;
   return {
     season,
@@ -481,6 +499,42 @@ export async function searchAll(
 ): Promise<{ teams: TeamSearchResult[]; events: EventSearchResult[] }> {
   const q = searchText.trim().toLowerCase();
   if (!q) return { teams: [], events: [] };
+
+  // Convex backend: index-backed search (word-prefix), then the same FIRST
+  // upcoming-events merge the file path does below.
+  if (convexBackendEnabled()) {
+    const r = await siteSearch(season, q);
+    if (r) {
+      const teams: TeamSearchResult[] = r.v.teams.map((t) => ({
+        number: t.number,
+        name: t.name,
+        location: { city: null, state: t.region, country: null },
+      }));
+      const eventsByCode = new Map<string, EventSearchResult>();
+      for (const e of r.v.events) {
+        eventsByCode.set(e.code, {
+          code: e.code,
+          season,
+          name: e.name ?? e.code,
+          start: e.start ?? "",
+          type: e.type,
+          location: { city: e.city, state: e.state, country: e.country },
+        });
+      }
+      try {
+        for (const e of await getSeasonEventList(season)) {
+          if (eventsByCode.has(e.code)) continue;
+          if (Math.min(scoreMatch(e.name, q), scoreMatch(e.code, q)) !== Infinity) {
+            eventsByCode.set(e.code, e);
+          }
+        }
+      } catch {
+        /* FIRST unavailable — Convex results only */
+      }
+      return { teams: teams.slice(0, 12), events: [...eventsByCode.values()].slice(0, 12) };
+    }
+  }
+
   await ensureLoaded(season);
   const f = getRankingsData(season);
 

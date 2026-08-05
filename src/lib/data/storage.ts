@@ -20,13 +20,16 @@ function dataDir(): string {
  *  /tmp (ephemeral throttle state, not project data); computed → data dir. */
 function localPath(name: string): string {
   if (name.startsWith("raw-")) return `/tmp/vibescout-${name}-${RAW_VERSION}.json`;
+  if (name.startsWith("worker-")) return `/tmp/vibescout-${name}-${RAW_VERSION}.gz`;
   if (name.startsWith("meta-")) return `/tmp/vibescout-${name}.json`;
   return path.join(dataDir(), `${name}.json`);
 }
 
 /** Blob object key for a dataset. */
 function blobKey(name: string): string {
-  return name.startsWith("raw-") ? `${name}-${RAW_VERSION}.json` : `${name}.json`;
+  if (name.startsWith("raw-")) return `${name}-${RAW_VERSION}.json`;
+  if (name.startsWith("worker-")) return `${name}-${RAW_VERSION}.gz`;
+  return `${name}.json`;
 }
 
 // Resolved Blob URLs are stable (addRandomSuffix:false); cache them per instance.
@@ -92,6 +95,41 @@ export async function writeDataset(name: string, content: string): Promise<void>
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: "application/json",
+    });
+    return;
+  }
+  const p = localPath(name);
+  if (!p.startsWith("/tmp")) mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, content);
+}
+
+/** Binary variants for compressed payloads (the gzipped worker state). */
+export async function readDatasetRaw(name: string): Promise<Buffer | null> {
+  if (blobEnabled()) {
+    const url = await blobUrl(name);
+    if (!url) return null;
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return readFileSync(localPath(name));
+  } catch {
+    return null;
+  }
+}
+
+export async function writeDatasetRaw(name: string, content: Buffer): Promise<void> {
+  if (blobEnabled()) {
+    const { put } = await import("@vercel/blob");
+    await put(blobKey(name), content, {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/octet-stream",
     });
     return;
   }

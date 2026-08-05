@@ -11,7 +11,7 @@
 // NOTE: imports next/server — only import this module from app code (server
 // components / routes), never from CLI scripts.
 import { after } from "next/server";
-import { runRefresh, readRefreshMeta, writeRefreshMeta } from "./refresh";
+import { runRefresh, readSyncState } from "./refresh";
 
 const ATTEMPT_MS = 30_000; // per-instance: skip even the meta read this often
 let lastAttempt = 0;
@@ -31,24 +31,16 @@ export function scheduleAutoRefresh(season: number): void {
 
 async function tick(season: number): Promise<void> {
   try {
-    const meta = await readRefreshMeta(season);
-    const now = Date.now();
-    if (now < meta.nextCheckAt) return;
-
-    // Optimistic claim so parallel instances mostly don't double-sync; the
-    // real nextCheckAt is written by runRefresh when it finishes. Carry
-    // lastWideAt through — dropping it made runRefresh think a wide sweep was
-    // always due, so every tick re-crawled the whole ±14/+3-day window.
-    await writeRefreshMeta(season, {
-      lastSyncAt: meta.lastSyncAt,
-      lastWideAt: meta.lastWideAt,
-      nextCheckAt: now + 90_000,
-    });
+    // Cheap pre-check (~200B): skip when not due. The real cross-instance lock
+    // is runRefresh's atomic Convex claim — this read just avoids pointless
+    // claim attempts from every instance.
+    const state = await readSyncState(season);
+    if (state && Date.now() < state.nextCheckAt) return;
 
     const res = await runRefresh(season);
     if (res?.changed) {
       console.log(
-        `[auto-refresh] synced: +${res.newMatches} matches (${res.newEvents} new / ${res.updatedEvents} updated events) in ${res.ms}ms`,
+        `[auto-refresh] synced: +${res.newMatches} matches (${res.newEvents} new / ${res.updatedEvents} updated events, ${res.skipped304} skipped via 304) in ${res.ms}ms`,
       );
     }
   } catch (e) {

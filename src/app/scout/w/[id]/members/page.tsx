@@ -307,8 +307,6 @@ function ScoutColumn({
 
 function MatchAssignments({ id }: { id: Id<"workspaces"> }) {
   const board = useQuery(api.assignments.matchBoard, { workspaceId: id });
-  const ws = useQuery(api.workspaces.get, { workspaceId: id });
-  const tz = ws?.workspace.timezone ?? undefined;
   // A reactive query only re-runs when data changes, so re-evaluate lateness
   // against the wall clock here (ticking each minute).
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -376,7 +374,7 @@ function MatchAssignments({ id }: { id: Id<"workspaces"> }) {
                     key={a._id}
                     aid={a._id}
                     label={`Q${a.matchNumber}`}
-                    sub={`team ${a.teamNumber}${a.predictedTime ? ` · ~${formatClock(a.predictedTime, tz)}` : ""}`}
+                    sub={`team ${a.teamNumber}${a.predictedTime ? ` · ~${formatClock(a.predictedTime)}` : ""}`}
                     status={a.hasReport ? "done" : isOverdue(a) ? "overdue" : "pending"}
                     onRemove={() => unassign({ assignmentId: a._id })}
                   />

@@ -5,7 +5,6 @@ import { seasonFull, isKnownSeason, isValidEventCode } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
 import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
-import { ensureLoaded } from "@/lib/data/store";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { formatDate, locationStr } from "@/lib/format";
 import EventRankings from "@/components/EventRankings";
@@ -66,16 +65,15 @@ export default async function EventPage({ params, searchParams }: Props) {
   if (!Number.isInteger(season) || !isKnownSeason(season)) notFound();
   if (!isValidEventCode(code.toUpperCase())) notFound();
 
-  await ensureLoaded(season); // hydrate the data store (Blob/file) before sync accessors
   scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const ev = await getEvent(season, code);
   if (!ev) notFound();
 
-  const epaMap = getRankingMap(season, ev.teams.map((t) => t.teamNumber));
+  const epaMap = await getRankingMap(season, ev.teams.map((t) => t.teamNumber));
   // Time-aware ratings for THIS event: pre-event EPA (seeds the simulation,
   // no lookahead) and post-event EPA/OPR (shown in the rankings table).
-  const evStats = getEventStats(season, code);
+  const evStats = await getEventStats(season, code);
 
   // While an event is live, solve per-event OPR from the scores in THIS request
   // (exact, zero lag) and inject it into the slot EventRankings prefers first;
@@ -110,7 +108,7 @@ export default async function EventPage({ params, searchParams }: Props) {
   }
 
   // --- Event prediction (Monte-Carlo) ---
-  const model = getSimModel(season);
+  const model = await getSimModel(season);
   const teamNums = ev.teams.map((t) => t.teamNumber);
   const idxOf = new Map(teamNums.map((n, i) => [n, i]));
   // Pre-event EPA going into this event; fall back to season EPA for teams or
@@ -240,7 +238,7 @@ export default async function EventPage({ params, searchParams }: Props) {
     }));
   const { predicted } = predictMatchTimes(qualSched, {
     ...FTC_DEFAULTS,
-    seasonPriorSec: getSeasonCyclePrior(season, ev.type),
+    seasonPriorSec: await getSeasonCyclePrior(season, ev.type),
   });
 
   const dateRange =

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { runRefresh, readRefreshMeta } from "@/lib/data/refresh";
+import { runRefresh, readSyncState } from "@/lib/data/refresh";
 
 // On-demand, never cached; allow up to 60s for a recompute.
 export const dynamic = "force-dynamic";
@@ -39,6 +39,9 @@ function summarize(res: Awaited<ReturnType<typeof runRefresh>>) {
     updatedEvents: res.updatedEvents,
     newMatches: res.newMatches,
     windowSize: res.windowSize,
+    skipped304: res.skipped304,
+    rankSynced: res.rankSynced,
+    wrote: res.wrote,
     ms: res.ms,
   });
 }
@@ -57,8 +60,8 @@ export async function GET(req: NextRequest) {
   // cadence so an every-minute cron only does real work when the store is due.
   after(async () => {
     try {
-      const meta = await readRefreshMeta(SEASON);
-      if (Date.now() < meta.nextCheckAt) return; // not due yet — skip cheaply
+      const state = await readSyncState(SEASON);
+      if (state && Date.now() < state.nextCheckAt) return; // not due yet — skip cheaply
       const res = await runRefresh(SEASON);
       if (res?.changed) {
         console.log(`[cron refresh] +${res.newMatches} matches in ${res.ms}ms`);
@@ -71,14 +74,16 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Manual refresh (header ↻ button): same runner, but forces a full ±14/+3-day
- * sweep so an explicit click re-checks recently-finished events too.
+ * Manual refresh: forces a full ±14/+3-day sweep so an explicit call re-checks
+ * recently-finished events too. `?full=1` additionally rewrites EVERY Convex
+ * row (fingerprint-reset escape hatch after partial failures or reseeds).
  */
 export async function POST(req: NextRequest) {
   const denied = authorize(req);
   if (denied) return denied;
   try {
-    return summarize(await runRefresh(SEASON, { wide: true }));
+    const full = req.nextUrl.searchParams.get("full") === "1";
+    return summarize(await runRefresh(SEASON, { wide: true, full }));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

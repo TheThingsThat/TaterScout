@@ -1,4 +1,6 @@
-import { getEventStatsData } from "@/lib/data/store";
+import { getEventStatsData, ensureLoaded } from "@/lib/data/store";
+import { convexBackendEnabled } from "@/lib/data/backend";
+import { siteEventStats } from "@/lib/data/convexSite";
 
 // Per-event, time-aware team ratings precomputed by scripts/build-epa.ts.
 // Compact stored row: [preTot, preAuto, postTot, postAuto, oprNp, oprAuto]
@@ -24,21 +26,9 @@ export interface EventTeamStat {
   oprTele: number | null;
 }
 
-// Read from the in-process store (refreshable at runtime).
-function load(season: number): FileShape | null {
-  return getEventStatsData(season) as unknown as FileShape | null;
-}
-
-/** Time-aware per-team ratings for one event, keyed by team number. Empty when
- *  the event isn't in the precomputed data (e.g. live/unfinished). */
-export function getEventStats(
-  season: number,
-  code: string,
-): Map<number, EventTeamStat> {
+function rowsToMap(rows: Record<string, Row>): Map<number, EventTeamStat> {
   const out = new Map<number, EventTeamStat>();
-  const ev = load(season)?.events[code];
-  if (!ev) return out;
-  for (const [team, r] of Object.entries(ev)) {
+  for (const [team, r] of Object.entries(rows)) {
     const preT = r[0] ?? 0;
     const preA = r[1] ?? 0;
     const postT = r[2] ?? 0;
@@ -58,4 +48,19 @@ export function getEventStats(
     });
   }
   return out;
+}
+
+/** Time-aware per-team ratings for one event, keyed by team number. Empty when
+ *  the event isn't in the precomputed data (e.g. live/unfinished). */
+export async function getEventStats(
+  season: number,
+  code: string,
+): Promise<Map<number, EventTeamStat>> {
+  if (convexBackendEnabled()) {
+    const r = await siteEventStats(season, code);
+    if (r) return r.v ? rowsToMap(r.v.rows) : new Map();
+  }
+  await ensureLoaded(season);
+  const ev = (getEventStatsData(season) as unknown as FileShape | null)?.events[code];
+  return ev ? rowsToMap(ev) : new Map();
 }

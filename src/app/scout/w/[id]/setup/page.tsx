@@ -99,10 +99,8 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
       const res = await fetch(`/api/scout/import?season=${season}&code=${encodeURIComponent(code)}`);
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Import failed");
-      // Set the event first (it carries the venue timezone we just fetched), so
-      // a re-import of the same code refreshes tz without wiping data.
       if (name !== undefined) {
-        await setEvent({ workspaceId: id, eventCode: code, eventName: name, timezone: j.timezone });
+        await setEvent({ workspaceId: id, eventCode: code, eventName: name });
       }
       const r = await importSnapshot({ workspaceId: id, teams: j.teams, matches: j.matches });
       toast.success(`Imported ${name ?? code}: ${r.teams} teams, ${r.matches} matches`);

@@ -1,5 +1,7 @@
 import { type SimModel, DEFAULT_SIM_MODEL } from "@/lib/predict/model";
-import { getRankingsData } from "@/lib/data/store";
+import { getRankingsData, ensureLoaded } from "@/lib/data/store";
+import { convexBackendEnabled } from "@/lib/data/backend";
+import { siteMeta, sitePage, siteTeamRow, siteTeamRows } from "@/lib/data/convexSite";
 
 export interface TeamRanking {
   number: number;
@@ -39,24 +41,75 @@ interface FileShape {
   teams: Record<string, Row>;
 }
 
-// Read from the in-process store (refreshable at runtime) rather than a static
-// import, so a refresh is reflected without a server restart.
-function file(season: number): FileShape | null {
+// File backend: load-on-demand from the in-process store (bundled JSON / Blob).
+async function file(season: number): Promise<FileShape | null> {
+  await ensureLoaded(season);
   return getRankingsData(season) as unknown as FileShape | null;
 }
 
-/** Dynamic season baseline cycle (seconds) for match-time prediction: the
- *  per-event-type value when available, else the overall season value. */
-export function getSeasonCyclePrior(season: number, eventType?: string): number {
-  const cp = file(season)?.cyclePriors;
+// Convex doc -> the site-wide TeamRanking shape.
+function docToRanking(d: {
+  team: number;
+  name: string;
+  region: string | null;
+  n: number;
+  epa: number | null;
+  epaAuto: number | null;
+  epaTele: number | null;
+  oprNp: number | null;
+  oprAuto: number | null;
+  oprTele: number | null;
+  rkEpa: number | null;
+  rkEpaAuto: number | null;
+  rkEpaTele: number | null;
+  rkOprNp: number | null;
+  rkOprAuto: number | null;
+  rkOprTele: number | null;
+}): TeamRanking {
+  return {
+    number: d.team,
+    name: d.name,
+    region: d.region,
+    n: d.n,
+    epa: d.epa,
+    epaAuto: d.epaAuto,
+    epaTele: d.epaTele,
+    oprNp: d.oprNp,
+    oprAuto: d.oprAuto,
+    oprTele: d.oprTele,
+    rkEpa: d.rkEpa,
+    rkEpaAuto: d.rkEpaAuto,
+    rkEpaTele: d.rkEpaTele,
+    rkOprNp: d.rkOprNp,
+    rkOprAuto: d.rkOprAuto,
+    rkOprTele: d.rkOprTele,
+  };
+}
+
+/** Dynamic season baseline cycle (seconds) for match-time prediction. */
+export async function getSeasonCyclePrior(season: number, eventType?: string): Promise<number> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) {
+      const cp = r.v?.cyclePriors;
+      if (!cp) return 330;
+      if (eventType && cp.byTypeSec[eventType] != null) return cp.byTypeSec[eventType];
+      return cp.overallSec;
+    }
+  }
+  const cp = (await file(season))?.cyclePriors;
   if (!cp) return 330; // hard fallback if not yet precomputed
   if (eventType && cp.byTypeSec[eventType] != null) return cp.byTypeSec[eventType];
   return cp.overallSec;
 }
 
 /** Season win/score/RP model for the event simulator. */
-export function getSimModel(season: number): SimModel {
-  return file(season)?.simModel ?? DEFAULT_SIM_MODEL;
+export async function getSimModel(season: number): Promise<SimModel> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) return (r.v?.simModel as SimModel | null) ?? DEFAULT_SIM_MODEL;
+  }
+  return (await file(season))?.simModel ?? DEFAULT_SIM_MODEL;
 }
 
 export const SORT_KEYS = [
@@ -82,34 +135,55 @@ export function isSortKey(s: string | undefined): s is SortKey {
   return !!s && (SORT_KEYS as readonly string[]).includes(s);
 }
 
-export function getTeamRanking(
-  season: number,
-  num: number,
-): TeamRanking | null {
-  const f = file(season);
+export async function getTeamRanking(season: number, num: number): Promise<TeamRanking | null> {
+  if (convexBackendEnabled()) {
+    const r = await siteTeamRow(season, num);
+    if (r) return r.v ? docToRanking(r.v) : null;
+  }
+  const f = await file(season);
   const r = f?.teams[String(num)];
   return r ? { number: num, ...r } : null;
 }
 
-export function getTeamCount(season: number): number {
-  return file(season)?.teamCount ?? 0;
+export async function getTeamCount(season: number): Promise<number> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) return r.v?.teamCount ?? 0;
+  }
+  return (await file(season))?.teamCount ?? 0;
 }
 
-export function getRegions(season: number): string[] {
-  return file(season)?.regions ?? [];
+export async function getRegions(season: number): Promise<string[]> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) return r.v?.regions ?? [];
+  }
+  return (await file(season))?.regions ?? [];
 }
 
-export function hasRankings(season: number): boolean {
-  return !!file(season);
+export async function hasRankings(season: number): Promise<boolean> {
+  if (convexBackendEnabled()) {
+    const r = await siteMeta(season);
+    if (r) return r.v != null;
+  }
+  return !!(await file(season));
 }
 
 /** Lookup a set of teams (for event pages). */
-export function getRankingMap(
+export async function getRankingMap(
   season: number,
   teamNumbers: number[],
-): Map<number, TeamRanking> {
-  const f = file(season);
+): Promise<Map<number, TeamRanking>> {
   const out = new Map<number, TeamRanking>();
+  if (teamNumbers.length === 0) return out;
+  if (convexBackendEnabled() && teamNumbers.length <= 250) {
+    const r = await siteTeamRows(season, teamNumbers);
+    if (r) {
+      for (const doc of r.v) out.set(doc.team, docToRanking(doc));
+      return out;
+    }
+  }
+  const f = await file(season);
   if (!f) return out;
   for (const n of teamNumbers) {
     const r = f.teams[String(n)];
@@ -126,11 +200,28 @@ export interface RankingQuery {
   pageSize: number;
 }
 
-export function queryRankings(
+export async function queryRankings(
   season: number,
   q: RankingQuery,
-): { rows: TeamRanking[]; total: number; page: number; pages: number } {
-  const f = file(season);
+): Promise<{ rows: TeamRanking[]; total: number; page: number; pages: number }> {
+  if (convexBackendEnabled()) {
+    const r = await sitePage(season, {
+      sort: q.sort,
+      dir: q.dir,
+      region: q.region ?? null,
+      page: q.page,
+      pageSize: q.pageSize,
+    });
+    if (r) {
+      return {
+        rows: r.v.rows.map(docToRanking),
+        total: r.v.total,
+        page: r.v.page,
+        pages: r.v.pages,
+      };
+    }
+  }
+  const f = await file(season);
   if (!f) return { rows: [], total: 0, page: 1, pages: 0 };
 
   let rows: TeamRanking[] = Object.entries(f.teams).map(([n, r]) => ({

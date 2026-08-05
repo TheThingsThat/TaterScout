@@ -59,15 +59,7 @@ function AllianceCell({ teams, side, won, align }: { teams: number[]; side: "red
 
 // Duplicates the event page's qualification rows: final scores (winner
 // emphasized) for played matches, our predicted start time for upcoming ones.
-function ScheduleRows({
-  matches,
-  highlight,
-  timezone,
-}: {
-  matches: SchedMatch[];
-  highlight?: number;
-  timezone?: string;
-}) {
+function ScheduleRows({ matches, highlight }: { matches: SchedMatch[]; highlight?: number }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
       {matches.map((m) => {
@@ -94,7 +86,7 @@ function ScheduleRows({
                 </div>
               ) : (
                 <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]">
-                  {time != null ? `~${formatClock(time, timezone)}` : "vs"}
+                  {time != null ? `~${formatClock(time)}` : "vs"}
                 </span>
               )}
               <AllianceCell teams={m.blue} side="blue" won={blueWon} align="left" />
@@ -194,9 +186,6 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
   const matches = (schedule ?? []) as SchedMatch[];
   const matchCount = matches.length;
   const myTeam = workspace.myTeam ?? null;
-  // Show times at the venue, not on the viewer's device (matches the public
-  // event page). Undefined until the event is re-imported with its timezone.
-  const tz = workspace.timezone ?? undefined;
 
   // Next unplayed match for our team (Up next).
   const nextMatch =
@@ -213,7 +202,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
         <div className={HEADING}>
           Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
         </div>
-        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} timezone={tz} />
+        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
       </div>
     ) : (
       <Collapsible
@@ -225,7 +214,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
           </span>
         }
       >
-        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} timezone={tz} />
+        <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
       </Collapsible>
     ));
 
@@ -256,7 +245,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
           </span>
           <span className="font-mono text-[15px] font-bold">Q{nextMatch.matchNumber}</span>
           <span className="text-[14px] text-muted">
-            {nextMatch.predictedTime != null ? `~${formatClock(nextMatch.predictedTime, tz)}` : "time TBD"}
+            {nextMatch.predictedTime != null ? `~${formatClock(nextMatch.predictedTime)}` : "time TBD"}
           </span>
         </div>
       )}

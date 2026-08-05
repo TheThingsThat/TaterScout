@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEvent } from "@/lib/ftc/queries";
-import { ensureLoaded } from "@/lib/data/store";
 import { getRankingMap, getSeasonCyclePrior } from "@/lib/rankings";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import { isKnownSeason, isValidEventCode } from "@/lib/season";
@@ -22,7 +21,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid season or event code." }, { status: 400 });
   }
 
-  await ensureLoaded(season);
   let ev;
   try {
     ev = await getEvent(season, code);
@@ -32,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (!ev) return NextResponse.json({ error: `No event "${code}" in ${season}.` }, { status: 404 });
 
   const teamNumbers = ev.teams.map((t) => t.teamNumber);
-  const ranking = getRankingMap(season, teamNumbers);
+  const ranking = await getRankingMap(season, teamNumbers);
   const teams = ev.teams.map((t) => {
     const r = ranking.get(t.teamNumber);
     return {
@@ -57,7 +55,7 @@ export async function GET(req: NextRequest) {
   }));
   const { predicted } = predictMatchTimes(sched, {
     ...FTC_DEFAULTS,
-    seasonPriorSec: getSeasonCyclePrior(season, ev.type),
+    seasonPriorSec: await getSeasonCyclePrior(season, ev.type),
   });
 
   const matches = quals.map((m) => ({
@@ -72,5 +70,5 @@ export async function GET(req: NextRequest) {
     blueScore: m.scores?.blue?.totalPoints ?? null,
   }));
 
-  return NextResponse.json({ eventName: ev.name, timezone: ev.timezone, teams, matches });
+  return NextResponse.json({ eventName: ev.name, teams, matches });
 }
