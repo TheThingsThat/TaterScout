@@ -1,6 +1,8 @@
 // Client for the official FIRST Tech Challenge Events API
 // (https://ftc-api.firstinspires.org/v2.0). HTTP Basic auth from
 // FIRST_API_USER / FIRST_API_TOKEN. Server-only.
+import { cache } from "react";
+
 const BASE = "https://ftc-api.firstinspires.org/v2.0";
 
 function authHeader(): string {
@@ -78,7 +80,7 @@ export async function firstGetConditional<T>(
   throw new Error("unreachable");
 }
 
-export async function firstGet<T>(path: string, opts: FirstOpts = {}): Promise<T | null> {
+async function firstGetImpl<T>(path: string, opts: FirstOpts = {}): Promise<T | null> {
   const init: RequestInit = {
     headers: { Authorization: authHeader(), Accept: "application/json" },
     signal: AbortSignal.timeout(15000),
@@ -102,4 +104,19 @@ export async function firstGet<T>(path: string, opts: FirstOpts = {}): Promise<T
     }
   }
   throw new Error("unreachable");
+}
+
+// Our AbortSignal.timeout() opts every request out of Next's built-in fetch
+// memoization (a `signal` is treated as caller-managed), so identical URLs in
+// one render — e.g. generateMetadata + the page both calling getTeam — would
+// each pay a Data Cache round trip. React.cache restores request-scoped
+// dedupe; keyed on primitives so every call site with the same path collapses.
+// Outside a request scope (CLI scripts) cache() is a transparent pass-through.
+const firstGetMemo = cache(<T,>(path: string, revalidate: number) =>
+  firstGetImpl<T>(path, { revalidate }),
+);
+
+export async function firstGet<T>(path: string, opts: FirstOpts = {}): Promise<T | null> {
+  if (opts.revalidate == null) return firstGetImpl<T>(path, opts); // crawl: no-store, no memo
+  return firstGetMemo(path, opts.revalidate) as Promise<T | null>;
 }

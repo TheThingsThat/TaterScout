@@ -1,5 +1,5 @@
 // FTC seasons are keyed by their starting year (e.g. 2025 = the 2025–2026 season).
-export const SEASON_NAMES: Record<number, string> = {
+const SEASON_NAMES: Record<number, string> = {
   2025: "DECODE",
   2024: "INTO THE DEEP",
   2023: "CENTERSTAGE",
@@ -10,10 +10,6 @@ export const SEASON_NAMES: Record<number, string> = {
 };
 
 export const CURRENT_SEASON = 2025;
-
-export const SELECTABLE_SEASONS = Object.keys(SEASON_NAMES)
-  .map(Number)
-  .sort((a, b) => b - a);
 
 export function seasonLabel(season: number): string {
   return `${season}–${season + 1}`;
@@ -44,9 +40,4 @@ export function parseSeasonParam(raw: string | number | null | undefined): numbe
  *  can't inject path/query segments into credentialed FIRST API URLs. */
 export function isValidEventCode(code: string): boolean {
   return /^[A-Z0-9]{2,20}$/.test(code);
-}
-
-/** Seasons whose scores are a single (non Trad/Remote) MatchScores type. */
-export function seasonHasSimpleScores(season: number): boolean {
-  return [2019, 2022, 2023, 2024, 2025].includes(season);
 }

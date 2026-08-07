@@ -11,10 +11,21 @@
 // NOTE: imports next/server — only import this module from app code (server
 // components / routes), never from CLI scripts.
 import { after } from "next/server";
-import { runRefresh, readSyncState } from "./refresh";
+import { unstable_cache } from "next/cache";
+import { runRefresh, readSyncState, type SyncState } from "./refresh";
 
 const ATTEMPT_MS = 30_000; // per-instance: skip even the meta read this often
 let lastAttempt = 0;
+
+/** Sync state through a short shared cache. The status route and tick() both
+ *  use this, so heartbeat tabs and page views collapse to ≤4 Convex reads/min
+ *  fleet-wide instead of one uncached read per instance per tick. Freshness is
+ *  only a pre-check — runRefresh's atomic claim is the real lock, and a ≤15s
+ *  stale "due" just costs one no-op claim. */
+export const cachedSyncState = (season: number): Promise<SyncState | null> =>
+  unstable_cache(async () => readSyncState(season), ["sync-state", String(season)], {
+    revalidate: 15,
+  })();
 
 /** Call during render of any data page. Cheap no-op when recently attempted. */
 export function scheduleAutoRefresh(season: number): void {
@@ -31,10 +42,10 @@ export function scheduleAutoRefresh(season: number): void {
 
 async function tick(season: number): Promise<void> {
   try {
-    // Cheap pre-check (~200B): skip when not due. The real cross-instance lock
-    // is runRefresh's atomic Convex claim — this read just avoids pointless
+    // Cheap pre-check: skip when not due. The real cross-instance lock is
+    // runRefresh's atomic Convex claim — this read just avoids pointless
     // claim attempts from every instance.
-    const state = await readSyncState(season);
+    const state = await cachedSyncState(season);
     if (state && Date.now() < state.nextCheckAt) return;
 
     const res = await runRefresh(season);

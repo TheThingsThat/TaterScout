@@ -1,17 +1,8 @@
-import { getTrajectoriesData, ensureLoaded } from "@/lib/data/store";
-import { convexBackendEnabled } from "@/lib/data/backend";
 import { siteTrajectory } from "@/lib/data/convexSite";
 
 // Compact stored point:
 // [tMinutes, eventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, matchNum?, series?]
 type RawPoint = [number, number, number, number, number, number | null, number | null, number?, number?, number?];
-
-interface FileShape {
-  season: number;
-  t0: number; // ms of first match
-  events: { c: string; n: string | null; s: string | null }[];
-  teams: Record<string, RawPoint[]>;
-}
 
 export interface TrajPoint {
   i: number; // sequence index
@@ -45,8 +36,7 @@ export interface Trajectory {
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
-// Shared transform: points reference `events` by index (global list for the
-// file backend, per-team local list for the Convex doc — same code path).
+// Points reference `events` by index (a per-team local list on the Convex doc).
 function build(
   t0: number,
   events: { c: string; n: string | null; s: string | null }[],
@@ -96,16 +86,7 @@ function build(
 }
 
 export async function getTrajectory(season: number, team: number): Promise<Trajectory | null> {
-  if (convexBackendEnabled()) {
-    const r = await siteTrajectory(season, team);
-    if (r) {
-      if (!r.v) return null;
-      return build(r.v.t0, r.v.events, r.v.points as RawPoint[]);
-    }
-  }
-  await ensureLoaded(season);
-  const f = getTrajectoriesData(season) as unknown as FileShape | null;
-  const raw = f?.teams[String(team)];
-  if (!f || !raw) return null;
-  return build(f.t0, f.events, raw);
+  const r = await siteTrajectory(season, team);
+  if (!r?.v) return null;
+  return build(r.v.t0, r.v.events, r.v.points as RawPoint[]);
 }

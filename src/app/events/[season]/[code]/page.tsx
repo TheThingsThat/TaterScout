@@ -70,10 +70,12 @@ export default async function EventPage({ params, searchParams }: Props) {
   const ev = await getEvent(season, code);
   if (!ev) notFound();
 
-  const epaMap = await getRankingMap(season, ev.teams.map((t) => t.teamNumber));
   // Time-aware ratings for THIS event: pre-event EPA (seeds the simulation,
   // no lookahead) and post-event EPA/OPR (shown in the rankings table).
-  const evStats = await getEventStats(season, code);
+  const [epaMap, evStats] = await Promise.all([
+    getRankingMap(season, ev.teams.map((t) => t.teamNumber)),
+    getEventStats(season, code),
+  ]);
 
   // While an event is live, solve per-event OPR from the scores in THIS request
   // (exact, zero lag) and inject it into the slot EventRankings prefers first;

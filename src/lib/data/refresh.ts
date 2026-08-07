@@ -10,7 +10,6 @@
 import { api } from "@convex/_generated/api";
 import { fetchActiveWindow, fetchDeltas } from "./crawl";
 import { computeSeasonData } from "./compute";
-import { applyComputed, persist } from "./store";
 import { loadWorkerState, saveWorkerState } from "./workerState";
 import { buildSiteDocs, diffFingerprints } from "./fingerprint";
 import { pushSiteDocs, invalidateKeys, syncTargetFromEnv, type PushCounts } from "./syncPush";
@@ -95,14 +94,15 @@ export async function runRefresh(
     const rankSyncDue =
       opts.full === true || (wide && (state.lastChangedAt ?? 0) > (state.lastRankSyncAt ?? 0));
 
-    // Worker state: memory-first; re-read from storage when another instance
-    // has pushed since our copy was saved.
+    // Worker state: memory-first; re-fetched from Convex file storage when
+    // another instance has pushed since our copy was saved.
     const worker = await loadWorkerState(season, {
+      target,
       staleIfSavedBefore: state.lastChangedAt > 0 ? state.lastChangedAt : undefined,
     });
     if (!worker || worker.events.length === 0) {
       throw new Error(
-        `Raw cache not seeded for season ${season} — run scripts/build-epa.ts, then POST /api/refresh?full=1.`,
+        `Worker state not seeded for season ${season} — run scripts/build-epa.ts, then scripts/seed-convex.ts.`,
       );
     }
 
@@ -182,24 +182,23 @@ export async function runRefresh(
     } catch (e) {
       // A failed batch may have landed partially: drop the attempted keys from
       // the fingerprint map so the next sync rewrites them (self-healing).
-      await saveWorkerState(season, {
-        savedAt: Date.now(),
-        events: delta.events,
-        fingerprints: invalidateKeys(fingerprints, diff),
-      });
+      await saveWorkerState(
+        season,
+        {
+          savedAt: Date.now(),
+          events: delta.events,
+          fingerprints: invalidateKeys(fingerprints, diff),
+        },
+        target,
+      );
       throw e;
     }
 
-    // Keep the in-process store fresh for file-mode readers, and best-effort
-    // persist the legacy blobs during the transition (removed at cutover).
-    applyComputed(season, delta.events, computed);
-    try {
-      await persist(season);
-    } catch (e) {
-      console.warn(`[refresh] legacy persist skipped: ${(e as Error).message}`);
-    }
-
-    await saveWorkerState(season, { savedAt: Date.now(), events: delta.events, fingerprints });
+    await saveWorkerState(
+      season,
+      { savedAt: Date.now(), events: delta.events, fingerprints },
+      target,
+    );
     await finish(true, mode === "full");
 
     return {

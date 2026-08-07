@@ -27,13 +27,20 @@ interface NextMatch {
 async function findNextMatch(
   season: number,
   num: number,
-  ongoingEventCodes: { code: string; name: string; type: string }[],
+  ongoingEventCodes: { code: string; name: string; type: string; timezone: string }[],
 ): Promise<NextMatch | null> {
-  const results = await Promise.all(
-    ongoingEventCodes.map((e) =>
-      getEventMatches(season, e.code).catch(() => null),
+  // Cycle priors hoisted out of the loop: one cached lookup per event TYPE,
+  // resolved alongside the schedules instead of serially inside the loop.
+  const types = [...new Set(ongoingEventCodes.map((e) => e.type))];
+  const [results, priors] = await Promise.all([
+    Promise.all(
+      ongoingEventCodes.map((e) =>
+        getEventMatches(season, e.code, e.timezone).catch(() => null),
+      ),
     ),
-  );
+    Promise.all(types.map((t) => getSeasonCyclePrior(season, t))),
+  ]);
+  const priorByType = new Map(types.map((t, i) => [t, priors[i]]));
   let best: NextMatch | null = null;
   for (let i = 0; i < results.length; i++) {
     const res = results[i];
@@ -48,7 +55,7 @@ async function findNextMatch(
     }));
     const { predicted } = predictMatchTimes(sched, {
       ...FTC_DEFAULTS,
-      seasonPriorSec: await getSeasonCyclePrior(season, ev.type),
+      seasonPriorSec: priorByType.get(ev.type)!,
     });
     const mine = quals
       .filter(
@@ -114,9 +121,11 @@ export default async function TeamPage({ params, searchParams }: Props) {
       ? [...new Set(team.activeSeasons)].sort((a, b) => b - a)
       : [CURRENT_SEASON];
 
-  const epa = await getTeamRanking(season, num);
-  const epaTeamCount = await getTeamCount(season);
-  const traj = await getTrajectory(season, num);
+  const [epa, epaTeamCount, traj] = await Promise.all([
+    getTeamRanking(season, num),
+    getTeamCount(season),
+    getTrajectory(season, num),
+  ]);
 
   // Season OPR tiles come from our own store (FIRST has no season OPR). Endgame
   // is folded into TeleOp, so only three tiles show.
@@ -135,13 +144,23 @@ export default async function TeamPage({ params, searchParams }: Props) {
   // Live: predicted next match at any ongoing event this team is registered for.
   const ongoing = team.events
     .filter((e) => e.event.ongoing)
-    .map((e) => ({ code: e.eventCode, name: e.event.name, type: e.event.type }));
-  const nextMatch = ongoing.length
-    ? await findNextMatch(season, num, ongoing)
-    : null;
-
-  // Season qualification record (W-L-T) across this season's events.
-  const record = await getSeasonRecord(season, num, team.events.map((e) => e.eventCode));
+    .map((e) => ({
+      code: e.eventCode,
+      name: e.event.name,
+      type: e.event.type,
+      timezone: e.event.timezone,
+    }));
+  // Season record across every match played this season — quals and playoffs.
+  // Independent of the next-match lookup; the underlying schedule fetches for
+  // ongoing events dedupe through the request-scoped FIRST memo.
+  const [nextMatch, record] = await Promise.all([
+    ongoing.length ? findNextMatch(season, num, ongoing) : null,
+    getSeasonRecord(
+      season,
+      num,
+      team.events.map((e) => ({ code: e.eventCode, timezone: e.event.timezone })),
+    ),
+  ]);
   const recordGames = record.wins + record.losses + record.ties;
 
   // Chronological, most recent first.
@@ -239,7 +258,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
         {recordGames > 0 && (
           <span className="ml-auto flex items-baseline gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
-              Qual record
+              {record.ties > 0 ? "W-L-T" : "W-L"}
             </span>
             <span className="text-[15px] font-semibold tabular-nums text-[#f7f8fa]">
               {record.wins}–{record.losses}

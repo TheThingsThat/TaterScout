@@ -19,7 +19,6 @@ import type * as picklist from "../picklist.js";
 import type * as pit from "../pit.js";
 import type * as shortlist from "../shortlist.js";
 import type * as site_eventStats from "../site/eventStats.js";
-import type * as site_pages from "../site/pages.js";
 import type * as site_rankings from "../site/rankings.js";
 import type * as site_search from "../site/search.js";
 import type * as site_trajectories from "../site/trajectories.js";
@@ -47,7 +46,6 @@ declare const fullApi: ApiFromModules<{
   pit: typeof pit;
   shortlist: typeof shortlist;
   "site/eventStats": typeof site_eventStats;
-  "site/pages": typeof site_pages;
   "site/rankings": typeof site_rankings;
   "site/search": typeof site_search;
   "site/trajectories": typeof site_trajectories;

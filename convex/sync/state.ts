@@ -86,6 +86,61 @@ export const finish = mutation({
   },
 });
 
+// --- Worker state file (raw events + fingerprints, gzipped) ---------------
+// Convex file storage is the worker's only persistent home: any instance can
+// adopt the newest state, and no external blob store is involved.
+
+/** One-shot upload URL for a new worker-state file. */
+export const workerStateUploadUrl = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    requireSyncSecret(secret);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Point the season at a freshly uploaded state file; delete the old one. */
+export const commitWorkerState = mutation({
+  args: {
+    secret: v.string(),
+    season: v.number(),
+    storageId: v.id("_storage"),
+    savedAt: v.number(),
+  },
+  handler: async (ctx, { secret, season, storageId, savedAt }) => {
+    requireSyncSecret(secret);
+    const doc = await ctx.db
+      .query("syncMeta")
+      .withIndex("by_season", (q) => q.eq("season", season))
+      .unique();
+    const oldId = doc?.workerStateId;
+    if (doc) await ctx.db.patch(doc._id, { workerStateId: storageId, workerStateSavedAt: savedAt });
+    else
+      await ctx.db.insert("syncMeta", {
+        season,
+        ...DEFAULTS,
+        workerStateId: storageId,
+        workerStateSavedAt: savedAt,
+      });
+    if (oldId && oldId !== storageId) await ctx.storage.delete(oldId);
+  },
+});
+
+/** Signed download URL for the season's worker state (worker-only data). */
+export const workerStateUrl = query({
+  args: { secret: v.string(), season: v.number() },
+  handler: async (ctx, { secret, season }) => {
+    requireSyncSecret(secret);
+    const doc = await ctx.db
+      .query("syncMeta")
+      .withIndex("by_season", (q) => q.eq("season", season))
+      .unique();
+    if (!doc?.workerStateId) return null;
+    const url = await ctx.storage.getUrl(doc.workerStateId);
+    return url ? { url, savedAt: doc.workerStateSavedAt ?? 0 } : null;
+  },
+});
+
 /** Freshness tokens for a set of FIRST API paths (worker-only usefulness, but
  *  the values are harmless Last-Modified strings). ≤200 paths per call. */
 export const freshness = query({

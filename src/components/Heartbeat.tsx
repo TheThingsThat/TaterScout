@@ -7,13 +7,13 @@ import { useEffect } from "react";
  *  that page renders do ("visitors are the clock"), so someone parked on the
  *  site keeps EPA/OPR/rankings recomputing without any cron. Hidden tabs stay
  *  silent. Renders nothing. */
-export default function Heartbeat({ intervalSec = 60 }: { intervalSec?: number }) {
+export default function Heartbeat() {
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       fetch("/api/status", { cache: "no-store" }).catch(() => {});
-    }, intervalSec * 1000);
+    }, 60_000);
     return () => clearInterval(id);
-  }, [intervalSec]);
+  }, []);
   return null;
 }

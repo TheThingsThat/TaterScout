@@ -3,14 +3,13 @@
 // distinct key per TTL — Convex cost scales with cached keys, not visitors.
 //
 // Every helper returns `{ v: T } | null`: null means "Convex unavailable"
-// (callers fall back to the file backend), while `{ v: null }` is a genuine
-// "not found". A transient failure is cached for its short TTL — acceptable,
-// the fallback serves bundled data.
+// (callers degrade to empty results), while `{ v: null }` is a genuine
+// "not found". A transient failure is cached for its short TTL — acceptable;
+// the next TTL expiry retries.
 import { unstable_cache } from "next/cache";
 import { fetchQuery } from "convex/nextjs";
 import { createHash } from "node:crypto";
 import { api } from "@convex/_generated/api";
-import type { FunctionReturnType } from "convex/server";
 
 const url = () => process.env.NEXT_PUBLIC_CONVEX_URL!;
 
@@ -31,13 +30,6 @@ async function cq<T>(key: (string | number)[], ttl: number, fn: () => Promise<T>
     return null;
   }
 }
-
-export type MetaDoc = FunctionReturnType<typeof api.site.rankings.meta>;
-export type TeamDoc = FunctionReturnType<typeof api.site.rankings.team>;
-export type PageResult = FunctionReturnType<typeof api.site.rankings.page>;
-export type TrajectoryDoc = FunctionReturnType<typeof api.site.trajectories.byTeam>;
-export type EventStatsDoc = FunctionReturnType<typeof api.site.eventStats.byEvent>;
-export type SearchResult = FunctionReturnType<typeof api.site.search.search>;
 
 export const siteMeta = (season: number) =>
   cq(["meta", season], 60, () => fetchQuery(api.site.rankings.meta, { season }, { url: url() }));

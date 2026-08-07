@@ -6,9 +6,9 @@
  * Reads src/data/{rankings,trajectories,event-stats}-{season}.json, shapes them
  * into Convex docs, and writes ONLY rows whose fingerprint changed since the
  * last run — so a second run is a no-op, proving the diff path. Uses the same
- * secret-guarded mutations + push module as the runtime sync worker. When the
- * local raw crawl cache exists (scripts/build-epa.ts), the full worker state
- * (raw + fingerprints, gzipped) is persisted so the runtime worker adopts it.
+ * secret-guarded mutations + push module as the runtime sync worker. The full
+ * worker state (raw crawl + fingerprints, gzipped) is uploaded to the target's
+ * Convex file storage so the deployment's own sync worker can bootstrap.
  * Env: NEXT_PUBLIC_CONVEX_URL (or CONVEX_URL) + SYNC_SECRET, read from
  * .env.local when not already in the environment.
  */
@@ -21,6 +21,11 @@ import { loadWorkerState, saveWorkerState } from "../src/lib/data/workerState.ts
 import type { ComputedData } from "../src/lib/data/types.ts";
 
 const SEASON = Number(process.argv[2]) || 2025;
+// Worker state records the fingerprints of the last push, not which deployment
+// received it — so seeding a SECOND deployment (prod) would diff against the
+// first one's state and write almost nothing. --full ignores it and writes every
+// row, which is what a fresh deployment needs.
+const FULL = process.argv.includes("--full");
 
 // Minimal .env.local loader (tsx scripts don't get Next's env handling).
 function loadEnvLocal(): void {
@@ -49,9 +54,14 @@ async function main() {
   };
   const { docs, fingerprints } = buildSiteDocs(data);
 
-  // Previous fingerprints come from the worker state (or legacy raw adoption).
-  const prevState = await loadWorkerState(SEASON);
-  const diff = diffFingerprints(fingerprints, prevState?.fingerprints ?? null, "full");
+  // Previous fingerprints come from the worker state (local cache first, then
+  // the target's Convex file storage).
+  const prevState = await loadWorkerState(SEASON, { target });
+  const prevFp = FULL ? null : (prevState?.fingerprints ?? null);
+  const diff = diffFingerprints(fingerprints, prevFp, "full");
+  console.log(
+    `[seed-convex] target ${target.client.url ?? "?"}${FULL ? " (--full: ignoring prior fingerprints)" : ""}`,
+  );
   console.log(
     `[seed-convex] to write: meta=${diff.meta} teams=${diff.teams.length} traj=${diff.trajectories.length} eventStats=${diff.eventStats.length} events=${diff.events.length}`,
   );
@@ -69,16 +79,23 @@ async function main() {
     });
   }
 
-  // Persist worker state so the runtime worker starts from these fingerprints
-  // (with the raw events when the local crawl cache is available).
-  await saveWorkerState(SEASON, {
-    savedAt: Date.now(),
-    events: prevState?.events ?? [],
-    fingerprints,
-  });
-  console.log(
-    `[seed-convex] done: ${wrote.calls} mutation calls (${wrote.teams} teams, ${wrote.trajectories} traj, ${wrote.eventStats} eventStats, ${wrote.events} events); worker state saved (${prevState?.events.length ?? 0} raw events)`,
-  );
+  // Upload worker state (raw events + these fingerprints) to the TARGET's
+  // Convex file storage — this is what lets the deployment's own sync worker
+  // bootstrap. Skipped when there's no raw crawl locally (run build-epa first).
+  if ((prevState?.events.length ?? 0) > 0) {
+    await saveWorkerState(
+      SEASON,
+      { savedAt: Date.now(), events: prevState!.events, fingerprints },
+      target,
+    );
+    console.log(
+      `[seed-convex] done: ${wrote.calls} mutation calls (${wrote.teams} teams, ${wrote.trajectories} traj, ${wrote.eventStats} eventStats, ${wrote.events} events); worker state uploaded (${prevState!.events.length} raw events)`,
+    );
+  } else {
+    console.warn(
+      `[seed-convex] done (${wrote.calls} mutation calls) — but NO raw events cached locally, so worker state was NOT uploaded. Run scripts/build-epa.ts first, then re-run this seed.`,
+    );
+  }
 }
 
 main().catch((e) => {

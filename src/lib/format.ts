@@ -18,15 +18,21 @@ export function rankPercentile(rank: number, count: number): number {
   return Math.max(0, Math.min(100, (1 - (rank - 1) / count) * 100));
 }
 
-export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+export function formatDate(
+  value: string | number | null | undefined,
+  opts: { year?: boolean } = {},
+): string {
+  if (value === null || value === undefined || value === "") return "—";
   // Dates from the API are plain YYYY-MM-DD — keep them in UTC to avoid TZ drift.
-  const d = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  const d =
+    typeof value === "number"
+      ? new Date(value)
+      : new Date(value.length === 10 ? value + "T00:00:00Z" : value);
+  if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
+    ...(opts.year === false ? {} : { year: "numeric" as const }),
     timeZone: "UTC",
   });
 }

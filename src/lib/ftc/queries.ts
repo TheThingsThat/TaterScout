@@ -2,9 +2,7 @@
 // FIRST Events API (first.ts); season snapshot, world record and search read our
 // precomputed store (FIRST has no season-OPR or fuzzy-search endpoints).
 import { firstGet } from "./first";
-import { normalizeEventType } from "./labels";
-import { ensureLoaded, getRankingsData } from "../data/store";
-import { convexBackendEnabled } from "../data/backend";
+import { levelOf, normalizeEventType } from "./labels";
 import { siteMeta, siteSearch } from "../data/convexSite";
 import type {
   Team,
@@ -118,7 +116,6 @@ function isOngoing(start: string | null, end: string | null): boolean {
   const t = now();
   return !Number.isNaN(s) && t >= s && t <= e;
 }
-const levelOf = (t: string) => (t === "QUALIFICATION" ? "Quals" : "Playoff");
 
 /** Map a FIRST award name + series to our canonical {type, placement}. */
 function mapAward(name: string, series: number): { type: string; placement: number } {
@@ -348,23 +345,38 @@ export interface EventMatchLite {
   }[];
 }
 
-export async function getEventMatches(season: number, code: string): Promise<EventMatchLite | null> {
-  // Qual hybrid schedule so the "next match" lookup sees UPCOMING (unplayed) quals.
-  const [detailR, qualHybR] = await Promise.all([
-    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
+export async function getEventMatches(
+  season: number,
+  code: string,
+  knownTimezone?: string | null,
+): Promise<EventMatchLite | null> {
+  // Hybrid schedules: qual so the "next match" lookup sees UPCOMING (unplayed)
+  // quals, playoff so the season record counts elim matches too. Playoff is
+  // absent until alliance selection, hence the tolerated null. Callers that
+  // already know the event's timezone (getTeam returns it) pass it to skip the
+  // detail fetch — one fewer FIRST call per event.
+  const [detailR, qualHybR, playoffHybR] = await Promise.all([
+    knownTimezone == null
+      ? firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE })
+      : null,
     firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
   ]);
-  const d = detailR?.events?.[0];
-  if (!d) return null;
+  const timezone = knownTimezone ?? detailR?.events?.[0]?.timezone;
+  if (knownTimezone == null && !detailR?.events?.[0]) return null;
   return {
-    timezone: d.timezone ?? "UTC",
-    matches: (qualHybR?.schedule ?? [])
+    timezone: timezone || "UTC",
+    matches: [...(qualHybR?.schedule ?? []), ...(playoffHybR?.schedule ?? [])]
       .filter((m) => m.tournamentLevel !== "PRACTICE")
       .map((m) => ({
         matchNum: m.matchNumber,
         tournamentLevel: levelOf(m.tournamentLevel),
         series: m.series,
-        hasBeenPlayed: !!m.postResultTime,
+        // A posted score without postResultTime still means played — the event
+        // page already treats it that way; diverging here made getSeasonRecord
+        // drop such matches and let findNextMatch advertise them as upcoming.
+        hasBeenPlayed:
+          !!m.postResultTime || (m.scoreRedFinal != null && m.scoreBlueFinal != null),
         scheduledStartTime: m.startTime,
         actualStartTime: m.actualStartTime,
         redFinal: m.scoreRedFinal,
@@ -383,14 +395,16 @@ export interface SeasonRecord {
   ties: number;
 }
 
-/** A team's qualification W-L-T across its events in a season, from final scores. */
+/** A team's W-L-T across every match it played this season — quals AND playoffs.
+ *  Uses FINAL scores (penalties included), which is what decides a match, rather
+ *  than the no-penalty scores our rating store keeps. */
 export async function getSeasonRecord(
   season: number,
   teamNumber: number,
-  eventCodes: string[],
+  events: { code: string; timezone?: string | null }[],
 ): Promise<SeasonRecord> {
   const results = await Promise.all(
-    eventCodes.map((c) => getEventMatches(season, c).catch(() => null)),
+    events.map((e) => getEventMatches(season, e.code, e.timezone).catch(() => null)),
   );
   let wins = 0;
   let losses = 0;
@@ -417,20 +431,10 @@ export async function getSeasonRecord(
 export async function getSeasonSnapshot(
   season: number,
 ): Promise<{ activeTeamsCount: number; matchesPlayedCount: number }> {
-  if (convexBackendEnabled()) {
-    const r = await siteMeta(season);
-    if (r) {
-      return {
-        activeTeamsCount: r.v?.teamCount ?? 0,
-        matchesPlayedCount: r.v?.matchCount ?? 0,
-      };
-    }
-  }
-  await ensureLoaded(season);
-  const r = getRankingsData(season);
+  const r = await siteMeta(season);
   return {
-    activeTeamsCount: r?.teamCount ?? 0,
-    matchesPlayedCount: r?.matchCount ?? 0,
+    activeTeamsCount: r?.v?.teamCount ?? 0,
+    matchesPlayedCount: r?.v?.matchCount ?? 0,
   };
 }
 
@@ -444,15 +448,7 @@ export interface WorldRecord {
 }
 
 export async function getWorldRecord(season: number): Promise<WorldRecord | null> {
-  let wr = null;
-  if (convexBackendEnabled()) {
-    const r = await siteMeta(season);
-    if (r) wr = r.v?.worldRecord ?? null;
-  }
-  if (!wr) {
-    await ensureLoaded(season);
-    wr = getRankingsData(season)?.worldRecord ?? null;
-  }
+  const wr = (await siteMeta(season))?.v?.worldRecord ?? null;
   if (!wr) return null;
   return {
     season,
@@ -481,7 +477,7 @@ function scoreMatch(hayName: string, needle: string, extra?: string): number {
 /** All events for a season (metadata only), straight from FIRST. Unlike the
  *  precomputed store — which only holds events that already have matches — this
  *  includes UPCOMING events, so they stay searchable/importable before start. */
-export async function getSeasonEventList(season: number): Promise<EventSearchResult[]> {
+async function getSeasonEventList(season: number): Promise<EventSearchResult[]> {
   const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: REVALIDATE });
   return (r?.events ?? []).map((e) => ({
     code: e.code,
@@ -500,93 +496,35 @@ export async function searchAll(
   const q = searchText.trim().toLowerCase();
   if (!q) return { teams: [], events: [] };
 
-  // Convex backend: index-backed search (word-prefix), then the same FIRST
-  // upcoming-events merge the file path does below.
-  if (convexBackendEnabled()) {
-    const r = await siteSearch(season, q);
-    if (r) {
-      const teams: TeamSearchResult[] = r.v.teams.map((t) => ({
-        number: t.number,
-        name: t.name,
-        location: { city: null, state: t.region, country: null },
-      }));
-      const eventsByCode = new Map<string, EventSearchResult>();
-      for (const e of r.v.events) {
-        eventsByCode.set(e.code, {
-          code: e.code,
-          season,
-          name: e.name ?? e.code,
-          start: e.start ?? "",
-          type: e.type,
-          location: { city: e.city, state: e.state, country: e.country },
-        });
-      }
-      try {
-        for (const e of await getSeasonEventList(season)) {
-          if (eventsByCode.has(e.code)) continue;
-          if (Math.min(scoreMatch(e.name, q), scoreMatch(e.code, q)) !== Infinity) {
-            eventsByCode.set(e.code, e);
-          }
-        }
-      } catch {
-        /* FIRST unavailable — Convex results only */
-      }
-      return { teams: teams.slice(0, 12), events: [...eventsByCode.values()].slice(0, 12) };
-    }
-  }
-
-  await ensureLoaded(season);
-  const f = getRankingsData(season);
-
-  const teams: { r: TeamSearchResult; s: number }[] = [];
-  if (f) {
-    for (const [num, row] of Object.entries(f.teams)) {
-      const s = scoreMatch(row.name, q, num);
-      if (s !== Infinity)
-        teams.push({
-          r: { number: Number(num), name: row.name, location: { city: null, state: row.region, country: null } },
-          s,
-        });
-    }
-    teams.sort((a, b) => a.s - b.s || a.r.number - b.r.number);
-  }
-
-  // Events: the precomputed store first (rich; only events with matches), then
-  // FIRST's full season list so upcoming events (no matches yet) are findable.
-  const eventScored = new Map<string, { r: EventSearchResult; s: number }>();
-  for (const e of f?.events ?? []) {
-    const s = Math.min(scoreMatch(e.name ?? "", q), scoreMatch(e.code, q));
-    if (s !== Infinity)
-      eventScored.set(e.code, {
-        r: {
-          code: e.code,
-          season,
-          name: e.name ?? e.code,
-          start: e.start ?? "",
-          type: e.type,
-          location: { city: e.city, state: e.state, country: e.country },
-        },
-        s,
-      });
+  // Convex index-backed search (word-prefix) for teams + played events, merged
+  // with FIRST's full season list so UPCOMING events (no matches yet, hence not
+  // in our tables) stay searchable. Either source failing degrades gracefully.
+  const r = await siteSearch(season, q);
+  const teams: TeamSearchResult[] = (r?.v?.teams ?? []).map((t) => ({
+    number: t.number,
+    name: t.name,
+    location: { city: null, state: t.region, country: null },
+  }));
+  const eventsByCode = new Map<string, EventSearchResult>();
+  for (const e of r?.v?.events ?? []) {
+    eventsByCode.set(e.code, {
+      code: e.code,
+      season,
+      name: e.name ?? e.code,
+      start: e.start ?? "",
+      type: e.type,
+      location: { city: e.city, state: e.state, country: e.country },
+    });
   }
   try {
     for (const e of await getSeasonEventList(season)) {
-      if (eventScored.has(e.code)) continue;
-      const s = Math.min(scoreMatch(e.name, q), scoreMatch(e.code, q));
-      if (s !== Infinity) eventScored.set(e.code, { r: e, s });
+      if (eventsByCode.has(e.code)) continue;
+      if (Math.min(scoreMatch(e.name, q), scoreMatch(e.code, q)) !== Infinity) {
+        eventsByCode.set(e.code, e);
+      }
     }
   } catch {
-    /* FIRST unavailable — fall back to store events only */
+    /* FIRST unavailable — Convex results only */
   }
-  const events = [...eventScored.values()].sort((a, b) => a.s - b.s || (a.r.start < b.r.start ? 1 : -1));
-
-  return { teams: teams.slice(0, 12).map((x) => x.r), events: events.slice(0, 12).map((x) => x.r) };
-}
-
-export async function searchTeams(searchText: string, season: number, limit = 12): Promise<TeamSearchResult[]> {
-  return (await searchAll(searchText, season)).teams.slice(0, limit);
-}
-
-export async function searchEvents(searchText: string, season: number, limit = 12): Promise<EventSearchResult[]> {
-  return (await searchAll(searchText, season)).events.slice(0, limit);
+  return { teams: teams.slice(0, 12), events: [...eventsByCode.values()].slice(0, 12) };
 }

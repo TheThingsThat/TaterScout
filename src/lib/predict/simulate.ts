@@ -58,7 +58,7 @@ export function mulberry32(seed: number): () => number {
 }
 
 /** FTC alliance structure heuristic when no real playoff data is available. */
-export function inferStructure(teamCount: number): { K: number; S: number } {
+function inferStructure(teamCount: number): { K: number; S: number } {
   return teamCount >= 28 ? { K: 8, S: 3 } : { K: 4, S: 2 };
 }
 
@@ -157,7 +157,10 @@ function simOneEvent(
     rand() < winProb(strength[a], strength[b], ms) ? a : b;
   const bo3 = (a: number, b: number): number => {
     let wa = 0, wb = 0;
-    while (wa < 2 && wb < 2) (matchAlliance(a, b) === a ? wa++ : wb++);
+    while (wa < 2 && wb < 2) {
+      if (matchAlliance(a, b) === a) wa++;
+      else wb++;
+    }
     return wa === 2 ? a : b;
   };
 

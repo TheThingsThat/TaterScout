@@ -12,15 +12,12 @@ function pct(x: number): string {
 export default function EventPredictions({
   result,
   season,
-  limit,
 }: {
   result: SimResult;
   season: number;
-  /** Optional cap; by default every team is listed (the table scrolls). */
-  limit?: number;
 }) {
   const champs = result.divisionCount != null;
-  const rows = limit != null ? result.teams.slice(0, limit) : result.teams;
+  const rows = result.teams;
   return (
     <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
       <div className="ts-scroll overflow-x-auto">

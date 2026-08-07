@@ -3,7 +3,7 @@
 // breakdowns (auto/teleop/RP). Team names + regions come from FIRST's teams
 // endpoint. OPR is NOT provided by FIRST — we compute it in compute.ts.
 import { firstGet, firstGetConditional } from "../ftc/first";
-import { normalizeEventType } from "../ftc/labels";
+import { levelOf, normalizeEventType } from "../ftc/labels";
 import type { RawEvent, RawMatch } from "./types";
 
 const CONCURRENCY = 6;
@@ -103,9 +103,6 @@ async function fetchEventTeams(season: number, code: string): Promise<Map<number
   return map;
 }
 
-const levelOf = (tournamentLevel: string) =>
-  tournamentLevel === "QUALIFICATION" ? "Quals" : "Playoff";
-
 /** Join matches + score breakdowns into RawMatch[] (played matches only). */
 function buildRawEvent(
   detail: FirstEvent,
@@ -176,26 +173,6 @@ function buildRawEvent(
       region: teamInfo.get(num)?.region ?? null,
     })),
   };
-}
-
-/** Fetch one event fully (self-contained; used by the refresh). */
-export async function fetchEvent(season: number, code: string): Promise<RawEvent | null> {
-  const [detailR, matchR, qs, ps, teamInfo] = await Promise.all([
-    getEventDetail(season, code),
-    getMatches(season, code),
-    getScores(season, code, "qual"),
-    getScores(season, code, "playoff"),
-    fetchEventTeams(season, code),
-  ]);
-  const detail = detailR?.events?.[0];
-  if (!detail) return null;
-  const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
-  return buildRawEvent(detail, matchR?.matches ?? [], scores, teamInfo);
-}
-
-export async function fetchAllCodes(season: number): Promise<string[]> {
-  const r = await getEventsList(season);
-  return (r?.events ?? []).map((e) => e.code);
 }
 
 /** Full-season crawl. Uses one events list + a global team index, then 3 calls

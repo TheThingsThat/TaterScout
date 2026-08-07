@@ -2,7 +2,6 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import {
   requireMember,
-  requireAdmin,
   requireMatchAccess,
   checkLen,
   checkTags,
@@ -159,16 +158,5 @@ export const submitReport = mutation({
     // Free the claim now that the report exists.
     if (claim) await ctx.db.delete(claim._id);
     return id;
-  },
-});
-
-/** Delete a match report so a mis-scouted robot can be re-scouted (admin only). */
-export const deleteReport = mutation({
-  args: { reportId: v.id("matchReports") },
-  handler: async (ctx, { reportId }) => {
-    const report = await ctx.db.get(reportId);
-    if (!report) return;
-    await requireAdmin(ctx, report.workspaceId);
-    await ctx.db.delete(reportId);
   },
 });

@@ -1,5 +1,3 @@
-import { getEventStatsData, ensureLoaded } from "@/lib/data/store";
-import { convexBackendEnabled } from "@/lib/data/backend";
 import { siteEventStats } from "@/lib/data/convexSite";
 
 // Per-event, time-aware team ratings precomputed by scripts/build-epa.ts.
@@ -8,11 +6,6 @@ import { siteEventStats } from "@/lib/data/convexSite";
 //   post* = EPA the team left the event with (shown on the event page)
 //   opr*  = that event's OPR (no-penalty); tele = np − auto
 type Row = (number | null)[];
-
-interface FileShape {
-  season: number;
-  events: Record<string, Record<string, Row>>;
-}
 
 export interface EventTeamStat {
   preEpa: number;
@@ -56,11 +49,6 @@ export async function getEventStats(
   season: number,
   code: string,
 ): Promise<Map<number, EventTeamStat>> {
-  if (convexBackendEnabled()) {
-    const r = await siteEventStats(season, code);
-    if (r) return r.v ? rowsToMap(r.v.rows) : new Map();
-  }
-  await ensureLoaded(season);
-  const ev = (getEventStatsData(season) as unknown as FileShape | null)?.events[code];
-  return ev ? rowsToMap(ev) : new Map();
+  const r = await siteEventStats(season, code);
+  return r?.v ? rowsToMap(r.v.rows) : new Map();
 }

@@ -1,14 +1,5 @@
 import type { NextConfig } from "next";
 
-// The datasets are read at runtime via fs on a path built from process.cwd()
-// (data/storage.ts dataDir()), so don't leave tracing them to static analysis.
-// Every route below hydrates the store — ensureLoaded() reads all three
-// together — and falls back to these bundled copies when Vercel Blob is
-// unavailable (over quota, which pauses the store), so the site serves
-// last-commit data instead of going blank. Keep in sync with ensureLoaded()
-// callers.
-const DATASETS = ["./src/data/*.json"];
-
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -23,14 +14,6 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
-  },
-  outputFileTracingIncludes: {
-    "/": DATASETS,
-    "/rankings": DATASETS,
-    "/events/[season]/[code]": DATASETS,
-    "/teams/[number]": DATASETS,
-    "/api/search": DATASETS,
-    "/api/scout/import": DATASETS,
   },
 };
 

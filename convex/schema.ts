@@ -269,6 +269,11 @@ export default defineSchema({
     lastWideAt: v.number(),
     lastRankSyncAt: v.number(), // 30-min rank-reconcile cadence
     lastChangedAt: v.number(), // when season tables last changed (worker-state staleness check)
+    // The sync worker's state file (raw events + fingerprints, gzipped JSON,
+    // ~2MB — far over the 1MB doc limit, hence file storage). One file per
+    // season; commitWorkerState deletes the previous one.
+    workerStateId: v.optional(v.id("_storage")),
+    workerStateSavedAt: v.optional(v.number()),
   }).index("by_season", ["season"]),
 
   // Upstream freshness tokens (Statbotics pattern): Last-Modified per FIRST API

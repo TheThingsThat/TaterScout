@@ -47,30 +47,32 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const term = q.trim();
+  const cacheKey = `${CURRENT_SEASON}:${term.toLowerCase()}`;
+  const cached = term.length >= 2 ? RESULT_CACHE.get(cacheKey) : undefined;
+
+  // Derive-and-reset during render (React's sanctioned alternative to setState
+  // inside an effect): on a query change, seed hits from the cache — instant,
+  // no spinner — or keep the stale list and spin while the fetch is due.
+  const [prevKey, setPrevKey] = useState(cacheKey);
+  if (prevKey !== cacheKey) {
+    setPrevKey(cacheKey);
+    setHits(cached ?? (term.length < 2 ? [] : hits));
+    setLoading(term.length >= 2 && !cached);
+    setActive(0);
+  }
+
   useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) {
-      setHits([]);
-      setLoading(false);
-      return;
-    }
-    // Instant from cache (repeat / backspaced searches) — no fetch, no spinner.
-    const key = `${CURRENT_SEASON}:${term.toLowerCase()}`;
-    const cached = RESULT_CACHE.get(key);
-    if (cached) {
-      setHits(cached);
-      setActive(0);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const t = setTimeout(async () => {
+    const q2 = q.trim();
+    const key = `${CURRENT_SEASON}:${q2.toLowerCase()}`;
+    if (q2.length < 2 || RESULT_CACHE.has(key)) return;
+    const timer = setTimeout(async () => {
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
         const res = await fetch(
-          `/api/search?q=${encodeURIComponent(term)}&season=${CURRENT_SEASON}`,
+          `/api/search?q=${encodeURIComponent(q2)}&season=${CURRENT_SEASON}`,
           { signal: ctrl.signal },
         );
         const data: { teams: TeamHit[]; events: EventHit[] } = await res.json();
@@ -99,7 +101,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
         if (abortRef.current === ctrl) setLoading(false);
       }
     }, 220);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [q]);
 
   useEffect(() => {
@@ -122,7 +124,6 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
   // A numeric query gets an instant "Team N" option while the API is still
   // loading. Once results are in, we trust them: a real team shows as a hit; a
   // number with no match falls through to the "not found" state below.
-  const term = q.trim();
   const numericHref = /^\d{1,6}$/.test(term) ? `/teams/${term}` : null;
   const results: Flat[] =
     numericHref && loading

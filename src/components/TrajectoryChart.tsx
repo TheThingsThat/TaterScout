@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { formatDate } from "@/lib/format";
 import type { TrajPoint, EventSegment } from "@/lib/trajectory";
 
 type Key = "epa" | "epaAuto" | "epaTele" | "opr" | "oprAuto" | "oprTele";
@@ -29,13 +30,7 @@ const PAD = { l: 40, r: 14, t: 14, b: 64 };
 const PLOT_W = W - PAD.l - PAD.r;
 const PLOT_H = H - PAD.t - PAD.b;
 
-function fmtDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
+const fmtDate = (ms: number) => formatDate(ms, { year: false });
 
 /** Real competition match label (e.g. "Qual 15", "Match 1-2"). Falls back to
  *  the season sequence index for points without match metadata. */

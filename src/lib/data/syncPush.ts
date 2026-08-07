@@ -7,8 +7,7 @@
 // imports) must not land in page bundles — only the post-response sync needs it.
 import { api } from "@convex/_generated/api";
 import type { ConvexHttpClient } from "convex/browser";
-import type { SiteDocs, Fingerprints } from "./fingerprint";
-import type { diffFingerprints } from "./fingerprint";
+import type { SiteDocs, Fingerprints, diffFingerprints } from "./fingerprint";
 
 export interface SyncTarget {
   client: ConvexHttpClient;
@@ -16,12 +15,20 @@ export interface SyncTarget {
   season: number;
 }
 
+// One client per URL per instance — syncTargetFromEnv runs on every heartbeat
+// tick, and rebuilding the client (plus re-resolving the dynamic import) each
+// time was pure overhead.
+let cachedClient: { url: string; client: ConvexHttpClient } | null = null;
+
 export async function syncTargetFromEnv(season: number): Promise<SyncTarget | null> {
   const url = process.env.CONVEX_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL;
   const secret = process.env.SYNC_SECRET;
   if (!url || !secret) return null;
-  const { ConvexHttpClient } = await import("convex/browser");
-  return { client: new ConvexHttpClient(url), secret, season };
+  if (cachedClient?.url !== url) {
+    const { ConvexHttpClient } = await import("convex/browser");
+    cachedClient = { url, client: new ConvexHttpClient(url) };
+  }
+  return { client: cachedClient.client, secret, season };
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {

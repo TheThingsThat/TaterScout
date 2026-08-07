@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, Authenticated, AuthLoading } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { toast } from "sonner";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON, seasonLabel } from "@/lib/season";
 
 const INPUT =
   "w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-[#3a3a3a]";
@@ -91,7 +91,7 @@ function Dashboard() {
                   </span>
                 </div>
                 <div className="mt-1 text-[12px] text-[#6b6f78]">
-                  {w.eventName || w.eventCode || "No event yet"} · {w.season}–{(w.season + 1) % 100}
+                  {w.eventName || w.eventCode || "No event yet"} · {seasonLabel(w.season)}
                 </div>
                 {w.role === "admin" && (
                   <div className="mt-3 text-[12px] text-muted">

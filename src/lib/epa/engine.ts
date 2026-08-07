@@ -73,7 +73,7 @@ export interface EpaConfig {
   baselineWindowDays: number;
 }
 
-export const DEFAULT_CONFIG: EpaConfig = {
+const DEFAULT_CONFIG: EpaConfig = {
   kEarly: 0.5,
   kLate: 0.3,
   kRampStart: 6,

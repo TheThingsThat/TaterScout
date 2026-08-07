@@ -1,3 +1,5 @@
+import { ordinal } from "../format";
+
 const EVENT_TYPE_LABEL: Record<string, string> = {
   Scrimmage: "Scrimmage",
   LeagueMeet: "League Meet",
@@ -28,23 +30,9 @@ export function eventTypeLabel(type: string): string {
   return EVENT_TYPE_LABEL[type] ?? type;
 }
 
-/** Higher = more prestigious; used to sort a team's event list. */
-export function eventTypeWeight(type: string): number {
-  const order = [
-    "FIRSTChampionship",
-    "Championship",
-    "SuperQualifier",
-    "Qualifier",
-    "LeagueTournament",
-    "LeagueMeet",
-    "Premier",
-    "Scrimmage",
-    "OffSeason",
-    "Other",
-  ];
-  const i = order.indexOf(type);
-  return i === -1 ? order.length : i;
-}
+/** FIRST's raw tournamentLevel → our two-level shape. */
+export const levelOf = (tournamentLevel: string): "Quals" | "Playoff" =>
+  tournamentLevel === "QUALIFICATION" ? "Quals" : "Playoff";
 
 export function tournamentLevelLabel(level: string): string {
   switch (level) {
@@ -61,12 +49,6 @@ export function tournamentLevelLabel(level: string): string {
   }
 }
 
-function ord(n: number): string {
-  const v = n % 100;
-  const s = ["th", "st", "nd", "rd"];
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
 /** Display label for an award (mapAward's {type, placement}):
  *  - alliance results → "Winning Alliance" / "Finalist Alliance" (no numbering,
  *    and no division/finals distinction — a win is a win)
@@ -78,5 +60,5 @@ export function formatAward(type: string, placement: number): string {
     .replace(/\s*sponsored by.*$/i, "")
     .replace(/\s*Award\b/i, "")
     .trim();
-  return placement > 0 ? `${short} ${ord(placement)}` : short;
+  return placement > 0 ? `${short} ${ordinal(placement)}` : short;
 }

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
-import { readSyncState } from "@/lib/data/refresh";
-import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
+import { scheduleAutoRefresh, cachedSyncState } from "@/lib/data/autoRefresh";
 
 // Freshness probe (seconds since the last completed sync) that doubles as the
 // presence heartbeat target: each hit schedules the same throttled post-response
@@ -11,15 +9,9 @@ export const maxDuration = 60; // headroom for the after()-scheduled sync
 
 const SEASON = 2025;
 
-// Sync state lives in Convex now; a 15s shared cache keeps heartbeat tabs from
-// each hitting it directly.
-const cachedState = unstable_cache(async () => readSyncState(SEASON), ["sync-state", String(SEASON)], {
-  revalidate: 15,
-});
-
 export async function GET() {
   scheduleAutoRefresh(SEASON); // no-op unless the store is due (shared cadence)
-  const state = await cachedState();
+  const state = await cachedSyncState(SEASON); // 15s shared cache (autoRefresh)
   const secondsAgo = state?.lastSyncAt
     ? Math.max(0, Math.round((Date.now() - state.lastSyncAt) / 1000))
     : null;
