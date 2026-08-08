@@ -8,6 +8,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Collapsible from "@/components/Collapsible";
 import { formatClock, fmt } from "@/lib/format";
+import { errorMessage } from "@/lib/scoutError";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
 const HEADING = "mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#6b6f78]";
@@ -246,7 +247,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
                   await rotateJoinCode({ workspaceId: id });
                   toast.success("New join code issued.");
                 } catch (e) {
-                  toast.error((e as Error).message);
+                  toast.error(errorMessage(e, "Could not rotate the join code"));
                 }
               }}
               className="rounded-md border border-[#232323] px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground"

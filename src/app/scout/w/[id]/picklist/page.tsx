@@ -20,6 +20,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
 import { fmt } from "@/lib/format";
+import { errorMessage } from "@/lib/scoutError";
 
 // ---- Ranking field metadata -------------------------------------------------
 type CatField = "autoZone" | "teleopZone" | "endgame";
@@ -308,7 +309,7 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
     const to = list.findIndex((e) => e._id === over.id);
     if (from < 0 || to < 0) return;
     // Server recomputes the fractional rank; the query re-sorts reactively.
-    move({ entryId: active.id as Id<"shortlist">, toIndex: to }).catch((e) => toast.error((e as Error).message));
+    move({ entryId: active.id as Id<"shortlist">, toIndex: to }).catch((e) => toast.error(errorMessage(e, "Could not reorder the shortlist")));
   }
 
   return (

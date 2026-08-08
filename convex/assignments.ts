@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { requireMember, requireAdmin } from "./lib";
+import { fail, requireMember, requireAdmin } from "./lib";
 import type { Id } from "./_generated/dataModel";
 
 const OVERDUE_MS = 5 * 60 * 1000;
@@ -182,8 +182,8 @@ export const autoAssignMatches = mutation({
   handler: async (ctx, { workspaceId, teamNumbers, memberIds }) => {
     await requireAdmin(ctx, workspaceId);
     const members = await validMembers(ctx, workspaceId, memberIds);
-    if (members.length === 0) throw new Error("Select at least one scout.");
-    if (teamNumbers.length === 0) throw new Error("Select at least one team.");
+    if (members.length === 0) fail("Select at least one scout.");
+    if (teamNumbers.length === 0) fail("Select at least one team.");
     const teamSet = new Set(teamNumbers);
 
     const existing = await ctx.db
@@ -236,8 +236,8 @@ export const autoAssignPits = mutation({
   handler: async (ctx, { workspaceId, teamNumbers, memberIds }) => {
     await requireAdmin(ctx, workspaceId);
     const members = await validMembers(ctx, workspaceId, memberIds);
-    if (members.length === 0) throw new Error("Select at least one scout.");
-    if (teamNumbers.length === 0) throw new Error("Select at least one team.");
+    if (members.length === 0) fail("Select at least one scout.");
+    if (teamNumbers.length === 0) fail("Select at least one team.");
     const teamSet = new Set(teamNumbers);
 
     const existing = await ctx.db
@@ -267,10 +267,10 @@ export const reassign = mutation({
   args: { assignmentId: v.id("assignments"), toMemberId: v.id("members") },
   handler: async (ctx, { assignmentId, toMemberId }) => {
     const a = await ctx.db.get(assignmentId);
-    if (!a) throw new Error("Assignment not found.");
+    if (!a) fail("Assignment not found.");
     await requireAdmin(ctx, a.workspaceId);
     const target = await ctx.db.get(toMemberId);
-    if (!target || target.workspaceId !== a.workspaceId) throw new Error("Member not in workspace.");
+    if (!target || target.workspaceId !== a.workspaceId) fail("Member not in workspace.");
     await ctx.db.patch(assignmentId, { memberId: toMemberId });
   },
 });

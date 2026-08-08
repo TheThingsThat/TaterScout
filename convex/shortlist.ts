@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireMember } from "./lib";
+import { fail, requireMember } from "./lib";
 
 /** The caller's private shortlist, ordered, joined with team names. */
 export const list = query({
@@ -39,6 +39,15 @@ export const add = mutation({
   args: { workspaceId: v.id("workspaces"), teamNumber: v.number() },
   handler: async (ctx, { workspaceId, teamNumber }) => {
     const member = await requireMember(ctx, workspaceId);
+    // The team must actually be at this event — otherwise a typo (or a crafted
+    // call) parks a number here that no view can ever resolve to a name.
+    const team = await ctx.db
+      .query("teamEvents")
+      .withIndex("by_workspace_team", (q) =>
+        q.eq("workspaceId", workspaceId).eq("teamNumber", teamNumber),
+      )
+      .unique();
+    if (!team) fail(`Team ${teamNumber} is not registered for this event.`);
     const existing = await ctx.db
       .query("shortlist")
       .withIndex("by_workspace_member", (q) =>
@@ -63,7 +72,7 @@ export const remove = mutation({
     const entry = await ctx.db.get(entryId);
     if (!entry) return;
     const member = await requireMember(ctx, entry.workspaceId);
-    if (entry.memberId !== member._id) throw new Error("Not your shortlist.");
+    if (entry.memberId !== member._id) fail("Not your shortlist.");
     await ctx.db.delete(entryId);
   },
 });
@@ -73,9 +82,9 @@ export const move = mutation({
   args: { entryId: v.id("shortlist"), toIndex: v.number() },
   handler: async (ctx, { entryId, toIndex }) => {
     const entry = await ctx.db.get(entryId);
-    if (!entry) throw new Error("Entry not found.");
+    if (!entry) fail("Entry not found.");
     const member = await requireMember(ctx, entry.workspaceId);
-    if (entry.memberId !== member._id) throw new Error("Not your shortlist.");
+    if (entry.memberId !== member._id) fail("Not your shortlist.");
     const others = (
       await ctx.db
         .query("shortlist")

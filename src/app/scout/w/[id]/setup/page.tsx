@@ -6,6 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
 import { formatDate, locationStr } from "@/lib/format";
+import { errorMessage } from "@/lib/scoutError";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
 const INPUT =
@@ -108,7 +109,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
       setResults([]);
       setChanging(false);
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not import the event"));
     } finally {
       setImportingCode(null);
     }

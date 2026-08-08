@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/scoutError";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-4";
 const MALFUNCTIONS = ["drivetrain", "turret", "intake", "shooter"];
@@ -187,7 +188,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
       setTeam(n);
       resetForm();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not claim that robot"));
     }
   }
 
@@ -217,7 +218,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
       setTeam(null);
       resetForm();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not submit the report"));
     } finally {
       setBusy(false);
     }

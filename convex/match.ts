@@ -1,11 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import {
-  requireMember,
-  requireMatchAccess,
-  checkLen,
-  checkTags,
-} from "./lib";
+import { fail, requireMember, requireMatchAccess, checkCount, checkLen, checkTags } from "./lib";
 
 /** Qual schedule for the workspace's event. */
 export const schedule = query({
@@ -67,7 +62,7 @@ export const claim = mutation({
       .unique();
     if (existing) {
       if (existing.memberId === member._id) return existing._id;
-      throw new Error("Already claimed by another scout.");
+      fail("Already claimed by another scout.");
     }
     const reports = await ctx.db
       .query("matchReports")
@@ -76,7 +71,7 @@ export const claim = mutation({
       )
       .collect();
     if (reports.some((r) => r.teamNumber === teamNumber)) {
-      throw new Error("Already scouted for this match.");
+      fail("Already scouted for this match.");
     }
     return ctx.db.insert("matchClaims", { workspaceId, matchNumber, teamNumber, memberId: member._id });
   },
@@ -123,6 +118,10 @@ export const submitReport = mutation({
     checkLen(args.malfunctionNote, 500, "Note");
     checkTags(args.malfunctions, 20, 40, "malfunctions");
     checkTags(args.tags, 20, 40, "tags");
+    // Artifact counts are plain numbers on the wire, so a hand-crafted call
+    // could send negatives or fractions and skew every average that reads them.
+    checkCount(args.autoArtifacts, 200, "Auto artifacts");
+    checkCount(args.teleopArtifacts, 500, "TeleOp artifacts");
 
     const reports = await ctx.db
       .query("matchReports")
@@ -131,7 +130,7 @@ export const submitReport = mutation({
       )
       .collect();
     if (reports.some((r) => r.teamNumber === args.teamNumber)) {
-      throw new Error("A report already exists for this robot in this match.");
+      fail("A report already exists for this robot in this match.");
     }
 
     // Don't let one scout submit over (and silently void) another's claim.
@@ -145,7 +144,7 @@ export const submitReport = mutation({
       )
       .unique();
     if (claim && claim.memberId !== member._id && member.role !== "admin") {
-      throw new Error("Another scout is scouting this robot.");
+      fail("Another scout is scouting this robot.");
     }
 
     const { workspaceId, ...rest } = args;

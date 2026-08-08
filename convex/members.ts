@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAdmin } from "./lib";
+import { fail, requireAdmin } from "./lib";
 
 /** All members of a workspace with email, role, and how many reports each has
  *  submitted vs. been assigned (match + pit). Admin only. */
@@ -61,7 +61,7 @@ export const setRole = mutation({
   handler: async (ctx, { workspaceId, memberId, role }) => {
     await requireAdmin(ctx, workspaceId);
     const target = await ctx.db.get(memberId);
-    if (!target || target.workspaceId !== workspaceId) throw new Error("Member not found.");
+    if (!target || target.workspaceId !== workspaceId) fail("Member not found.");
     if (role === "scout" && target.role === "admin") {
       const admins = (
         await ctx.db
@@ -69,7 +69,7 @@ export const setRole = mutation({
           .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
           .collect()
       ).filter((m) => m.role === "admin");
-      if (admins.length <= 1) throw new Error("Can't demote the only admin.");
+      if (admins.length <= 1) fail("Can't demote the only admin.");
     }
     await ctx.db.patch(memberId, { role });
   },
@@ -81,7 +81,7 @@ export const remove = mutation({
   handler: async (ctx, { workspaceId, memberId }) => {
     await requireAdmin(ctx, workspaceId);
     const target = await ctx.db.get(memberId);
-    if (!target || target.workspaceId !== workspaceId) throw new Error("Member not found.");
+    if (!target || target.workspaceId !== workspaceId) fail("Member not found.");
     if (target.role === "admin") {
       const admins = (
         await ctx.db
@@ -89,7 +89,7 @@ export const remove = mutation({
           .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
           .collect()
       ).filter((m) => m.role === "admin");
-      if (admins.length <= 1) throw new Error("Can't remove the only admin.");
+      if (admins.length <= 1) fail("Can't remove the only admin.");
     }
     const assigns = await ctx.db
       .query("assignments")

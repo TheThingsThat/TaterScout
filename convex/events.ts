@@ -1,6 +1,6 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAdmin } from "./lib";
+import { fail, requireAdmin } from "./lib";
 
 const nn = v.union(v.number(), v.null());
 
@@ -40,8 +40,8 @@ export const importSnapshot = mutation({
     // FTC event is ~128 teams / ~200 matches, and every other bulk write in the
     // codebase carries an explicit cap. Keeps one call from blowing the
     // per-mutation write limit.
-    if (args.teams.length > 600) throw new Error("Too many teams in snapshot (max 600).");
-    if (args.matches.length > 1000) throw new Error("Too many matches in snapshot (max 1000).");
+    if (args.teams.length > 600) fail("Too many teams in snapshot (max 600).");
+    if (args.matches.length > 1000) fail("Too many matches in snapshot (max 1000).");
 
     // Clear existing snapshot for this workspace.
     for (const table of ["teamEvents", "matches"] as const) {

@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireAdmin, checkLen } from "./lib";
+import { fail, requireAdmin, checkLen } from "./lib";
 import { isDemoUser, MAX_DEMO_WORKSPACES } from "./demo";
 import type { Id } from "./_generated/dataModel";
 
@@ -37,7 +37,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not signed in.");
+    if (!userId) fail("Not signed in.");
     checkLen(args.name, 80, "Workspace name");
     checkLen(args.displayName, 60, "Your name");
     // Demo sessions get a much tighter cap than real accounts.
@@ -192,13 +192,13 @@ export const join = mutation({
   args: { joinCode: v.string(), displayName: v.string() },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not signed in.");
+    if (!userId) fail("Not signed in.");
     checkLen(args.displayName, 60, "Your name");
     const ws = await ctx.db
       .query("workspaces")
       .withIndex("by_joinCode", (q) => q.eq("joinCode", args.joinCode.trim().toUpperCase()))
       .unique();
-    if (!ws) throw new Error("No workspace found for that join code.");
+    if (!ws) fail("No workspace found for that join code.");
     // Keep demo and real workspaces strictly separate in both directions: a
     // demo user must never be able to pollute a real team's event, and a real
     // user must never store work somewhere that gets wiped on a tab close.

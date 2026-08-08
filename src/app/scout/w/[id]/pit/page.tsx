@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/scoutError";
 
 type RobotStatus = "full" | "minor" | "major";
 
@@ -74,7 +75,7 @@ function PitFormInner({
       toast.success(`Saved pit scout · ${teamNumber}`);
       onClose();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not save the pit report"));
     } finally {
       setBusy(false);
     }

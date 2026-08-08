@@ -1,25 +1,40 @@
 // Shared auth/membership guards. Every workspace-scoped function calls one of
 // these so multi-tenant isolation + roles are enforced in one place.
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
+/**
+ * Throw a message the USER is meant to read.
+ *
+ * A production Convex deployment redacts plain `Error` messages to a generic
+ * "Server Error" (dev shows them, which is why this only bites after deploy).
+ * `ConvexError` payloads are delivered intact, so every failure a person can
+ * legitimately hit — permission denied, already claimed, too long — must use
+ * this. Reserve plain `throw new Error` for genuine invariant violations that
+ * users should never see.
+ */
+export function fail(message: string): never {
+  throw new ConvexError(message);
+}
+
 export async function requireMember(ctx: QueryCtx, workspaceId: Id<"workspaces">) {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Not signed in.");
+  if (!userId) fail("Not signed in.");
   const member = await ctx.db
     .query("members")
     .withIndex("by_workspace_user", (q) =>
       q.eq("workspaceId", workspaceId).eq("userId", userId),
     )
     .unique();
-  if (!member) throw new Error("Not a member of this workspace.");
+  if (!member) fail("Not a member of this workspace.");
   return member;
 }
 
 export async function requireAdmin(ctx: QueryCtx, workspaceId: Id<"workspaces">) {
   const member = await requireMember(ctx, workspaceId);
-  if (member.role !== "admin") throw new Error("Admins only.");
+  if (member.role !== "admin") fail("Admins only.");
   return member;
 }
 
@@ -53,9 +68,9 @@ export async function requireMatchAccess(
       q.eq("workspaceId", workspaceId).eq("matchNumber", matchNumber),
     )
     .unique();
-  if (!match) throw new Error(`Match ${matchNumber} is not in this event's schedule.`);
+  if (!match) fail(`Match ${matchNumber} is not in this event's schedule.`);
   if (!match.red.includes(teamNumber) && !match.blue.includes(teamNumber)) {
-    throw new Error(`Team ${teamNumber} is not in match ${matchNumber}.`);
+    fail(`Team ${teamNumber} is not in match ${matchNumber}.`);
   }
 
   if (await canScoutAnything(ctx, workspaceId, member)) return member;
@@ -71,7 +86,7 @@ export async function requireMatchAccess(
     )
     .collect();
   if (!assigned.some((a) => a.memberId === member._id)) {
-    throw new Error("That match isn't assigned to you.");
+    fail("That match isn't assigned to you.");
   }
   return member;
 }
@@ -91,7 +106,7 @@ export async function requirePitAccess(
       q.eq("workspaceId", workspaceId).eq("teamNumber", teamNumber),
     )
     .unique();
-  if (!team) throw new Error(`Team ${teamNumber} is not registered for this event.`);
+  if (!team) fail(`Team ${teamNumber} is not registered for this event.`);
 
   if (await canScoutAnything(ctx, workspaceId, member)) return member;
 
@@ -102,7 +117,7 @@ export async function requirePitAccess(
     )
     .collect();
   if (!mine.some((a) => a.kind === "pit" && a.teamNumber === teamNumber)) {
-    throw new Error("That team isn't assigned to you for pit scouting.");
+    fail("That team isn't assigned to you for pit scouting.");
   }
   return member;
 }
@@ -110,11 +125,20 @@ export async function requirePitAccess(
 /** Reject oversized user text/arrays so a member can't bloat the workspace. */
 export function checkLen(value: string | undefined, max: number, label: string): void {
   if (value != null && value.length > max) {
-    throw new Error(`${label} is too long (max ${max} characters).`);
+    fail(`${label} is too long (max ${max} characters).`);
   }
 }
 
 export function checkTags(tags: string[], maxCount: number, maxLen: number, label: string): void {
-  if (tags.length > maxCount) throw new Error(`Too many ${label} (max ${maxCount}).`);
+  if (tags.length > maxCount) fail(`Too many ${label} (max ${maxCount}).`);
   for (const t of tags) checkLen(t, maxLen, label);
+}
+
+/** A tally of things that happened: whole, non-negative, and bounded. The UI
+ *  steppers can't produce anything else, but the mutation is a public API. */
+export function checkCount(value: number, max: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    fail(`${label} must be a whole number of 0 or more.`);
+  }
+  if (value > max) fail(`${label} is unrealistically high (max ${max}).`);
 }

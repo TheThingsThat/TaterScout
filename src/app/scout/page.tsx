@@ -4,16 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, Authenticated, AuthLoading } from "convex/react";
-import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import { toast } from "sonner";
 import { CURRENT_SEASON, seasonLabel } from "@/lib/season";
-
-/** Show the server's message when it deliberately sent one (ConvexError);
- *  otherwise a generic line, since plain errors are redacted in production. */
-function messageFor(e: unknown, fallback: string): string {
-  return e instanceof ConvexError ? String(e.data) : fallback;
-}
+import { errorMessage } from "@/lib/scoutError";
 
 const INPUT =
   "w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-[#3a3a3a]";
@@ -43,7 +37,7 @@ function Dashboard() {
       toast.success("Workspace created");
       router.push(`/scout/w/${workspaceId}`);
     } catch (e) {
-      toast.error(messageFor(e, "Could not create workspace"));
+      toast.error(errorMessage(e, "Could not create workspace"));
     } finally {
       setBusy(false);
     }
@@ -57,7 +51,7 @@ function Dashboard() {
       toast.success("Joined workspace");
       router.push(`/scout/w/${workspaceId}`);
     } catch (e) {
-      toast.error(messageFor(e, "Could not join"));
+      toast.error(errorMessage(e, "Could not join"));
     } finally {
       setBusy(false);
     }

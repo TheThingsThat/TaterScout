@@ -17,6 +17,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
 import Collapsible from "@/components/Collapsible";
 import { formatClock } from "@/lib/format";
+import { errorMessage } from "@/lib/scoutError";
 
 const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
 
@@ -32,7 +33,7 @@ function MembersTable({ id }: { id: Id<"workspaces"> }) {
     try {
       await fn;
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not update that member"));
     }
   }
 
@@ -134,7 +135,7 @@ function DelegationPanel({
       toast.success(`Assigned ${r.assigned} ${kind === "match" ? "match slots" : "pits"}`);
       setPickedTeams(new Set());
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(errorMessage(e, "Could not run auto-assign"));
     } finally {
       setBusy(false);
     }
@@ -332,7 +333,7 @@ function MatchAssignments({ id }: { id: Id<"workspaces"> }) {
     const toMemberId = overId.slice(6) as Id<"members">;
     const a = assigns.find((x) => x._id === active.id);
     if (!a || a.memberId === toMemberId) return;
-    reassign({ assignmentId: active.id as Id<"assignments">, toMemberId }).catch((e) => toast.error((e as Error).message));
+    reassign({ assignmentId: active.id as Id<"assignments">, toMemberId }).catch((e) => toast.error(errorMessage(e, "Could not reassign")));
   }
 
   return (
@@ -405,7 +406,7 @@ function PitAssignments({ id }: { id: Id<"workspaces"> }) {
     const toMemberId = overId.slice(6) as Id<"members">;
     const a = assigns.find((x) => x._id === active.id);
     if (!a || a.memberId === toMemberId) return;
-    reassign({ assignmentId: active.id as Id<"assignments">, toMemberId }).catch((e) => toast.error((e as Error).message));
+    reassign({ assignmentId: active.id as Id<"assignments">, toMemberId }).catch((e) => toast.error(errorMessage(e, "Could not reassign")));
   }
 
   return (
