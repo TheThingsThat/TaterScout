@@ -80,10 +80,23 @@ export const page = query({
 
     // Region view: eq(season, region) prefix on the region index returns the
     // whole region (including null-stat teams); sort here, nulls last.
+    //
+    // Reject unknown regions up front: `region` is an arbitrary caller-supplied
+    // string on a public endpoint, and this is the most expensive read here
+    // (largest real region ~650 teams vs ≤100 for a global page).
+    if (!(a.region in (metaDoc.regionCounts ?? {}))) {
+      return { rows: [], total: 0, page: 1, pages: 1 };
+    }
+    // The cap is ~2x the largest real region. Exceeding it would silently drop
+    // teams, so treat that as a bug to see rather than a quiet wrong answer.
+    const REGION_CAP = 1500;
     const regionRows = await ctx.db
       .query("seasonTeams")
       .withIndex("by_season_region_rkEpa", (q) => q.eq("season", season).eq("region", a.region))
-      .take(1500);
+      .take(REGION_CAP);
+    if (regionRows.length === REGION_CAP) {
+      console.warn(`[rankings] region ${a.region} hit the ${REGION_CAP}-row cap — page is truncated`);
+    }
     const key = a.sort;
     const sorted = regionRows.sort((x, y) => {
       const xv = x[key];

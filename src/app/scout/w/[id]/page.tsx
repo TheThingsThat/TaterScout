@@ -2,7 +2,8 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Collapsible from "@/components/Collapsible";
@@ -171,6 +172,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
   const teams = useQuery(api.teams.list, { workspaceId: id });
   const schedule = useQuery(api.match.schedule, { workspaceId: id });
+  const rotateJoinCode = useMutation(api.workspaces.rotateJoinCode);
   const isDesktop = useIsDesktop();
 
   if (data === undefined) return <div className="text-sm text-muted">Loading…</div>;
@@ -227,11 +229,31 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
           <span className="text-foreground">{member.name}</span> ({member.role})
         </p>
         {member.role === "admin" && (
-          <p className="mt-1 text-[13px] text-muted">
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted">
             Join code{" "}
             <span className="font-mono font-semibold tracking-[0.14em] text-foreground">
               {workspace.joinCode}
             </span>
+            <button
+              onClick={async () => {
+                if (
+                  !confirm(
+                    "Issue a new join code? The current code stops working immediately — anyone who hasn't joined yet will need the new one. Existing members are unaffected.",
+                  )
+                )
+                  return;
+                try {
+                  await rotateJoinCode({ workspaceId: id });
+                  toast.success("New join code issued.");
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+              }}
+              className="rounded-md border border-[#232323] px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground"
+              title="Removing a member doesn't make them forget the code — rotate it to actually revoke access."
+            >
+              New code
+            </button>
           </p>
         )}
       </div>

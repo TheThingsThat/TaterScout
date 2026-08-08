@@ -36,6 +36,12 @@ export const importSnapshot = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.workspaceId);
+    // The arrays come from a caller-controlled request, so bound them: a real
+    // FTC event is ~128 teams / ~200 matches, and every other bulk write in the
+    // codebase carries an explicit cap. Keeps one call from blowing the
+    // per-mutation write limit.
+    if (args.teams.length > 600) throw new Error("Too many teams in snapshot (max 600).");
+    if (args.matches.length > 1000) throw new Error("Too many matches in snapshot (max 1000).");
 
     // Clear existing snapshot for this workspace.
     for (const table of ["teamEvents", "matches"] as const) {

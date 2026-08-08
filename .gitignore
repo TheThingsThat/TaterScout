@@ -33,9 +33,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secrets — Google Cloud downloads OAuth client credentials as JSON into the
+# project root; these contain client_secret and must never be committed.
+*OAuth Client*.json
+client_secret*.json
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# throwaway simulation teardown — deployed to Convex, never committed
+convex/_simCleanup.ts
+scripts/sim/

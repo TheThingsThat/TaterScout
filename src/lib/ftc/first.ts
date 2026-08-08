@@ -16,6 +16,19 @@ function authHeader(): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Does this status mean "no such resource", rather than a transient failure?
+ *
+ * FIRST answers a nonexistent TEAM with 400, not 404 (verified: GET
+ * /2025/awards/999999 → 400). Treating that as an error made `/teams/999999`
+ * retry four times with backoff and then 500 after ~8s — so any visitor typing
+ * an unused team number got a crash AND quadrupled our upstream call count.
+ */
+const isNotFound = (status: number) => status === 404 || status === 400;
+
+/** Client errors won't succeed on retry — only back off for 429 and 5xx. */
+const isRetryable = (status: number) => status === 429 || status >= 500;
+
 interface FirstOpts {
   /** Next cache seconds for live page fetches; omit for `no-store` (crawl). */
   revalidate?: number;
@@ -65,8 +78,13 @@ export async function firstGetConditional<T>(
         continue;
       }
       if (res.status === 304) return { notModified: true, data: null, lastModified: ifModifiedSince ?? null };
-      if (res.status === 404) return { notModified: false, data: null, lastModified: null };
-      if (!res.ok) throw new Error(`FIRST API ${res.status} on ${path}`);
+      if (isNotFound(res.status)) return { notModified: false, data: null, lastModified: null };
+      if (!res.ok) {
+        if (!isRetryable(res.status)) throw new Error(`FIRST API ${res.status} on ${path}`);
+        if (attempt === 3) throw new Error(`FIRST API ${res.status} on ${path}`);
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
       return {
         notModified: false,
         data: (await res.json()) as T,
@@ -95,8 +113,13 @@ async function firstGetImpl<T>(path: string, opts: FirstOpts = {}): Promise<T | 
         await sleep(1000 * (attempt + 1));
         continue;
       }
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`FIRST API ${res.status} on ${path}`);
+      if (isNotFound(res.status)) return null;
+      if (!res.ok) {
+        if (!isRetryable(res.status)) throw new Error(`FIRST API ${res.status} on ${path}`);
+        if (attempt === 3) throw new Error(`FIRST API ${res.status} on ${path}`);
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
       return (await res.json()) as T;
     } catch (e) {
       if (attempt === 3) throw e;

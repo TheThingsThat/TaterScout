@@ -21,7 +21,23 @@ export default defineSchema({
     createdAt: v.number(),
     myTeam: v.optional(v.number()), // the team this workspace scouts for (Up next)
     freeScoutMode: v.optional(v.boolean()), // scouts can scout any match, not just assigned
-  }).index("by_joinCode", ["joinCode"]),
+    isDemo: v.optional(v.boolean()), // throwaway: wiped when the demo session ends
+  })
+    .index("by_joinCode", ["joinCode"])
+    .index("by_adminUser", ["adminUserId"]),
+
+  // A throwaway demo session. Its existence is what marks a user as a demo user
+  // (so the Convex Auth `users` table stays untouched). Everything the session
+  // created is deleted when it ends — either immediately via the tab-close
+  // beacon, or by the reaper cron once `expiresAt` passes, which is the real
+  // guarantee since a crash or force-quit fires no unload event at all.
+  demoSessions: defineTable({
+    userId: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(), // pushed forward while the tab is open (demo.touch)
+  })
+    .index("by_user", ["userId"])
+    .index("by_expiresAt", ["expiresAt"]),
 
   // Membership of a user in a workspace, with role.
   members: defineTable({

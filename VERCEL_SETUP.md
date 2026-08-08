@@ -68,6 +68,24 @@ external cron (Hobby) or Vercel Cron (Pro) hitting `GET /api/refresh` with
 `Authorization: Bearer <CRON_SECRET>` every minute. Without it, a zero-visitor
 stretch simply means no sync until the next page view.
 
+## Before opening signups to the public
+
+The app ships an in-process per-IP limiter (`src/proxy.ts`) covering `/teams/*`,
+`/events/*`, `/api/search`, and `/api/scout/import`. Its state is per serverless
+instance, so it blunts single-host scraping but is not a real global quota.
+Two things are worth adding in the dashboard before a public launch:
+
+1. **Vercel Firewall rate-limit rules** on those same paths, plus `/api/auth`.
+   Only the edge can enforce a true cross-instance limit, and `/api/auth` is
+   where credential-stuffing would land — Convex Auth's built-in limiter is
+   per-account (10 failed sign-ins/hour), which does not stop one password
+   sprayed across thousands of emails.
+2. **Password reset is not configured.** `convex/auth.ts` uses the `Password`
+   provider with no `reset` option, so a user who forgets their password is
+   locked out permanently with no self-service recovery. Enabling it (and
+   optional email verification) requires wiring an email provider — see
+   `Password({ reset, verify })` in @convex-dev/auth.
+
 ## Notes
 
 - **Freshness:** derived stats lag FIRST by ~1–2 min while anyone is browsing

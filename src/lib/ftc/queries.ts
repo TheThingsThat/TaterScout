@@ -202,7 +202,31 @@ async function fetchEventTeamNames(season: number, code: string): Promise<Map<nu
   return map;
 }
 
+/**
+ * Is this a real event code for the season? Answered from FIRST's season list,
+ * which is ONE cached fetch shared by every request (search uses it too), so a
+ * legitimate page pays nothing extra.
+ *
+ * Without this gate, `/events/2025/<anything>` fans out to ~9 credentialed
+ * FIRST calls before discovering the event doesn't exist — and since the data
+ * cache keys on the code, every invented code is a fresh miss. That let an
+ * anonymous visitor burn our single shared FIRST credential at 9x their own
+ * request rate. Fails OPEN: if the list is unavailable we serve the page
+ * rather than 404 real events over a transient upstream hiccup.
+ */
+async function isRealEventCode(season: number, code: string): Promise<boolean> {
+  try {
+    const list = await getSeasonEventList(season);
+    if (list.length === 0) return true;
+    const want = code.toUpperCase();
+    return list.some((e) => e.code.toUpperCase() === want);
+  } catch {
+    return true;
+  }
+}
+
 export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
+  if (!(await isRealEventCode(season, code))) return null;
   const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
     firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
     firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),

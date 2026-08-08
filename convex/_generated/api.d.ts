@@ -10,6 +10,8 @@
 
 import type * as assignments from "../assignments.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
+import type * as demo from "../demo.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as lib from "../lib.js";
@@ -37,6 +39,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   assignments: typeof assignments;
   auth: typeof auth;
+  crons: typeof crons;
+  demo: typeof demo;
   events: typeof events;
   http: typeof http;
   lib: typeof lib;

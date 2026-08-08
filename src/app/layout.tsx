@@ -24,13 +24,32 @@ const newsreader = Newsreader({
   variable: "--font-newsreader",
 });
 
+const SITE_URL = "https://taterscout.org";
+const DESCRIPTION =
+  "A FIRST Tech Challenge scouting dashboard: team EPA & OPR, win predictions, strength of schedule, event rankings, and match results in one place.";
+
 export const metadata: Metadata = {
+  // metadataBase resolves the relative URLs Next generates for social tags;
+  // without it, shared links render no preview card at all.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "TaterScout — FTC Scouting Dashboard",
     template: "%s · TaterScout",
   },
-  description:
-    "A FIRST Tech Challenge scouting dashboard: team EPA & OPR, win predictions, strength of schedule, event rankings, and match results in one place.",
+  description: DESCRIPTION,
+  applicationName: "TaterScout",
+  openGraph: {
+    type: "website",
+    siteName: "TaterScout",
+    title: "TaterScout — FTC Scouting Dashboard",
+    description: DESCRIPTION,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TaterScout — FTC Scouting Dashboard",
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
