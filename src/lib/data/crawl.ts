@@ -39,9 +39,12 @@ interface FirstAllianceScore {
   alliance: "Red" | "Blue";
   autoPoints: number;
   teleopPoints: number;
-  movementRP: boolean;
-  goalRP: boolean;
-  patternRP: boolean;
+  // Ranking-point flags are GAME-SPECIFIC (these are DECODE 2025's). For a new
+  // season they read as undefined → 0 until mapped to the new game's fields;
+  // the auto/teleop point totals have kept their names across seasons.
+  movementRP?: boolean;
+  goalRP?: boolean;
+  patternRP?: boolean;
 }
 interface FirstMatchScore {
   matchLevel: string;
@@ -133,6 +136,12 @@ function buildRawEvent(
     if (m.tournamentLevel === "PRACTICE") continue;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
     if (!sc?.red || !sc?.blue) continue; // unplayed / no breakdown
+    // Season-rollover guard: if a new game's breakdown renames the point
+    // totals, skip the match rather than ingesting NaN into every rating.
+    if (
+      typeof sc.red.autoPoints !== "number" || typeof sc.red.teleopPoints !== "number" ||
+      typeof sc.blue.autoPoints !== "number" || typeof sc.blue.teleopPoints !== "number"
+    ) continue;
     const time = Date.parse(m.actualStartTime ?? m.postResultTime ?? m.scheduledStartTime ?? "");
     if (Number.isNaN(time)) continue;
     const red = m.teams.filter((t) => t.onField && t.station.startsWith("Red")).map((t) => t.teamNumber);

@@ -125,12 +125,16 @@ export interface SimMatch {
 
 const RP_NAMES = ["movementRp", "goalRp", "patternRp"];
 
-/** Build the season simulation model from played matches + a team→EPA lookup. */
+/** Build the season simulation model from played matches + a team→EPA lookup.
+ *  Falls back to the season-agnostic defaults until the sample is meaningful —
+ *  a fit on a handful of early-season matches yields degenerate SDs (0 breaks
+ *  win probability outright). */
 export function computeSimModel(
   matches: SimMatch[],
   epaOf: (team: number) => number | undefined,
   winRp = 2,
 ): SimModel {
+  if (matches.length < 50) return DEFAULT_SIM_MODEL;
   const scores: number[] = [];
   const residuals: number[] = []; // actual margin − predicted (EPA) margin
   // Per RP category: (allianceEpaSum, earned) pairs.

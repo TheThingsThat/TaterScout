@@ -13,9 +13,10 @@ import path from "node:path";
 import { fetchAllEvents } from "../src/lib/data/crawl.ts";
 import { computeSeasonData } from "../src/lib/data/compute.ts";
 import { loadWorkerState, saveWorkerState } from "../src/lib/data/workerState.ts";
+import { CURRENT_SEASON } from "../src/lib/season.ts";
 import type { RawEvent } from "../src/lib/data/types.ts";
 
-const SEASON = Number(process.argv[2]) || 2025;
+const SEASON = Number(process.argv[2]) || CURRENT_SEASON;
 const REFETCH = process.argv.includes("--refetch");
 
 const dataDir = process.env.VIBESCOUT_DATA_DIR || path.join(process.cwd(), "src", "data");

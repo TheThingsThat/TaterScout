@@ -1,12 +1,11 @@
 import { NextResponse, type NextRequest, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { runRefresh, readSyncState } from "@/lib/data/refresh";
+import { CURRENT_SEASON as SEASON } from "@/lib/season";
 
 // On-demand, never cached; allow up to 60s for a recompute.
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const SEASON = 2025;
 
 /**
  * Both methods trigger credentialed FIRST API crawls + dataset writes, so both

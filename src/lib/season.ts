@@ -1,5 +1,6 @@
 // FTC seasons are keyed by their starting year (e.g. 2025 = the 2025–2026 season).
 const SEASON_NAMES: Record<number, string> = {
+  2026: "BIOBUZZ",
   2025: "DECODE",
   2024: "INTO THE DEEP",
   2023: "CENTERSTAGE",
@@ -9,7 +10,7 @@ const SEASON_NAMES: Record<number, string> = {
   2019: "SKYSTONE",
 };
 
-export const CURRENT_SEASON = 2025;
+export const CURRENT_SEASON = 2026;
 
 export function seasonLabel(season: number): string {
   return `${season}–${season + 1}`;

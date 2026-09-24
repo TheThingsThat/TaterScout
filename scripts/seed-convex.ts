@@ -18,9 +18,10 @@ import { api } from "../convex/_generated/api";
 import { buildSiteDocs, diffFingerprints } from "../src/lib/data/fingerprint.ts";
 import { pushSiteDocs, syncTargetFromEnv } from "../src/lib/data/syncPush.ts";
 import { loadWorkerState, saveWorkerState } from "../src/lib/data/workerState.ts";
+import { CURRENT_SEASON } from "../src/lib/season.ts";
 import type { ComputedData } from "../src/lib/data/types.ts";
 
-const SEASON = Number(process.argv[2]) || 2025;
+const SEASON = Number(process.argv[2]) || CURRENT_SEASON;
 // Worker state records the fingerprints of the last push, not which deployment
 // received it — so seeding a SECOND deployment (prod) would diff against the
 // first one's state and write almost nothing. --full ignores it and writes every
