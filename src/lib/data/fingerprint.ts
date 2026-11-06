@@ -71,7 +71,7 @@ export interface SiteDocs {
 }
 
 /** Per-doc hashes. Teams carry two: `stats` ignores rank fields (quick-sync
- *  cadence), `full` covers the whole row (30-min rank reconcile). */
+ *  cadence), `full` covers the whole row (daily rank reconcile). */
 export interface Fingerprints {
   meta: string;
   teams: Record<string, { stats: string; full: string }>;
@@ -244,4 +244,24 @@ export function diffFingerprints(
     removedTeams: Object.keys(prev.teams).filter((k) => !(k in next.teams)),
     removedEvents: Object.keys(prev.events).filter((k) => !(k in next.events)),
   };
+}
+
+/** The fingerprints to persist after a push. A stats push never writes ranks
+ *  (pushSiteDocs keepRanks), so every existing row keeps its previous `full`
+ *  hash — otherwise the map would claim new ranks were written and the reconcile
+ *  would miss them. Rows inserted new were written whole. */
+export function fingerprintsAfterPush(
+  next: Fingerprints,
+  prev: Fingerprints | null,
+  diff: ReturnType<typeof diffFingerprints>,
+  mode: "stats" | "full",
+): Fingerprints {
+  if (mode === "full" || !prev) return next;
+  void diff;
+  const teams = { ...next.teams };
+  for (const k of Object.keys(teams)) {
+    const p = prev.teams[k];
+    if (p) teams[k] = { stats: teams[k].stats, full: p.full };
+  }
+  return { ...next, teams };
 }

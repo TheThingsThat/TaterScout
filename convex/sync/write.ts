@@ -34,7 +34,10 @@ const trajectoryRow = v.object({
   events: v.array(
     v.object({ c: v.string(), n: v.union(v.string(), v.null()), s: v.union(v.string(), v.null()) }),
   ),
-  points: v.array(v.array(nn)),
+  // Both forms accepted so a sync from the previous Vercel build still lands
+  // during a deploy; current code only sends pointsJson.
+  pointsJson: v.optional(v.string()),
+  points: v.optional(v.array(v.array(nn))),
 });
 
 const eventStatsRow = v.object({
@@ -58,8 +61,16 @@ function checkBatch(len: number, max: number): void {
 }
 
 export const upsertTeams = mutation({
-  args: { secret: v.string(), season: v.number(), rows: v.array(teamRow) },
-  handler: async (ctx, { secret, season, rows }) => {
+  args: {
+    secret: v.string(),
+    season: v.number(),
+    rows: v.array(teamRow),
+    // Between rank reconciles, existing rows keep their stored ranks: leaderboard
+    // pages are rank ranges, so writing fresh ranks for only some rows would
+    // duplicate some rank numbers and skip others, dropping teams off every page.
+    keepRanks: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { secret, season, rows, keepRanks }) => {
     requireSyncSecret(secret);
     checkBatch(rows.length, 400);
     for (const row of rows) {
@@ -67,7 +78,11 @@ export const upsertTeams = mutation({
         .query("seasonTeams")
         .withIndex("by_season_team", (q) => q.eq("season", season).eq("team", row.team))
         .unique();
-      if (doc) await ctx.db.replace(doc._id, { season, ...row });
+      if (doc && keepRanks) {
+        const { rkEpa, rkEpaAuto, rkEpaTele, rkOprNp, rkOprAuto, rkOprTele, ...stats } = row;
+        void rkEpa; void rkEpaAuto; void rkEpaTele; void rkOprNp; void rkOprAuto; void rkOprTele;
+        await ctx.db.patch(doc._id, stats);
+      } else if (doc) await ctx.db.replace(doc._id, { season, ...row });
       else await ctx.db.insert("seasonTeams", { season, ...row });
     }
     return rows.length;

@@ -12,6 +12,12 @@ import Google from "@auth/core/providers/google";
 //   district admin.
 // - Anonymous: backs "try the demo" — a throwaway identity whose data is wiped
 //   when the session ends (see convex/demo.ts).
+//
+// 12-hour tokens instead of the 1-hour default: each refresh re-runs every open
+// subscription, which adds up on the free plan (the client also reuses its cached
+// token on page load; see ConvexClientProvider). A token stays valid up to 12h
+// after sign-out, but workspace access is still checked against the database.
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [Password, Anonymous, Google],
+  jwt: { durationMs: 12 * 60 * 60 * 1000 },
 });

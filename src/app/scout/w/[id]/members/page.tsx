@@ -437,7 +437,7 @@ function PitAssignments({ id }: { id: Id<"workspaces"> }) {
 // ---- Page -------------------------------------------------------------------
 function Members({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.list, { workspaceId: id });
+  const teams = useQuery(api.teams.roster, { workspaceId: id });
   const board = useQuery(api.assignments.matchBoard, { workspaceId: id });
   const setFree = useMutation(api.workspaces.setFreeScoutMode);
   const [sub, setSub] = useState<"match" | "pit">("match");

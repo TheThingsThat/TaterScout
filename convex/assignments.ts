@@ -6,8 +6,9 @@ import type { Id } from "./_generated/dataModel";
 
 const OVERDUE_MS = 5 * 60 * 1000;
 
-/** The caller's own assignments (match + pit), joined with schedule + whether a
- *  report already exists. Used by the Match/Pit pages for non-admin scouts. */
+/** The caller's own assignments (match + pit). Used by the Match/Pit pages for
+ *  non-admin scouts. Reads only assignment rows on purpose: joining schedule or
+ *  report tables would re-run this for every scout on every report saved. */
 export const mySchedule = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
@@ -18,39 +19,13 @@ export const mySchedule = query({
         q.eq("workspaceId", workspaceId).eq("memberId", member._id),
       )
       .collect();
-    const matches = await ctx.db
-      .query("matches")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .collect();
-    const byNum = new Map(matches.map((m) => [m.matchNumber, m]));
-    const reports = await ctx.db
-      .query("matchReports")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .collect();
-    const reported = new Set(reports.map((r) => `${r.matchNumber}:${r.teamNumber}`));
-    const pits = await ctx.db
-      .query("pitReports")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .collect();
-    const pitDone = new Set(pits.map((p) => p.teamNumber));
-
     const match = mine
       .filter((a) => a.kind === "match" && a.matchNumber != null)
-      .map((a) => {
-        const m = byNum.get(a.matchNumber as number);
-        return {
-          _id: a._id,
-          matchNumber: a.matchNumber as number,
-          teamNumber: a.teamNumber,
-          predictedTime: m?.predictedTime ?? null,
-          actualStartTime: m?.actualStartTime ?? null,
-          hasReport: reported.has(`${a.matchNumber}:${a.teamNumber}`),
-        };
-      })
+      .map((a) => ({ _id: a._id, matchNumber: a.matchNumber as number, teamNumber: a.teamNumber }))
       .sort((x, y) => x.matchNumber - y.matchNumber);
     const pit = mine
       .filter((a) => a.kind === "pit")
-      .map((a) => ({ _id: a._id, teamNumber: a.teamNumber, hasReport: pitDone.has(a.teamNumber) }))
+      .map((a) => ({ _id: a._id, teamNumber: a.teamNumber }))
       .sort((x, y) => x.teamNumber - y.teamNumber);
     return { match, pit };
   },

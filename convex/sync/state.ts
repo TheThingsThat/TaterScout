@@ -14,7 +14,7 @@ const DEFAULTS = {
   lastChangedAt: 0,
 };
 
-/** Current sync state (public: feeds /api/status's "updated Xs ago"). */
+/** Current sync state (for health checks: `npx convex run sync/state:get`). */
 export const get = query({
   args: { season: v.number() },
   handler: async (ctx, { season }) => {
@@ -27,7 +27,9 @@ export const get = query({
 });
 
 /** Atomically claim the next sync slot. Returns claimed=false when another
- *  instance already holds it (nextCheckAt is in the future). */
+ *  instance already holds it (nextCheckAt is in the future). Also decides whether
+ *  this run sweeps wider, and stamps that here so a run killed mid-sweep waits for
+ *  the next interval instead of retrying the same sweep on every claim. */
 export const claim = mutation({
   args: {
     secret: v.string(),
@@ -35,8 +37,10 @@ export const claim = mutation({
     holdMs: v.number(),
     // Manual refreshes bypass the cadence gate (still one atomic writer).
     force: v.optional(v.boolean()),
+    wideAfterMs: v.optional(v.number()),
+    longAfterMs: v.optional(v.number()),
   },
-  handler: async (ctx, { secret, season, holdMs, force }) => {
+  handler: async (ctx, { secret, season, holdMs, force, wideAfterMs, longAfterMs }) => {
     requireSyncSecret(secret);
     const now = Date.now();
     const hold = Math.min(Math.max(holdMs, 10_000), 10 * 60_000);
@@ -47,13 +51,22 @@ export const claim = mutation({
     if (doc && now < doc.nextCheckAt && !force) {
       return { claimed: false as const, state: doc };
     }
+    const due = (last: number | undefined, after: number | undefined) =>
+      after !== undefined && now - (last ?? 0) > after;
+    const long = due(doc?.lastLongSweepAt, longAfterMs);
+    const wide = long || due(doc?.lastWideAt, wideAfterMs);
+    const patch = {
+      nextCheckAt: now + hold,
+      ...(wide ? { lastWideAt: now } : {}),
+      ...(long ? { lastLongSweepAt: now } : {}),
+    };
     if (doc) {
-      await ctx.db.patch(doc._id, { nextCheckAt: now + hold });
-      return { claimed: true as const, state: { ...doc, nextCheckAt: now + hold } };
+      await ctx.db.patch(doc._id, patch);
+      return { claimed: true as const, state: { ...doc, ...patch }, wide, long };
     }
-    const id = await ctx.db.insert("syncMeta", { season, ...DEFAULTS, nextCheckAt: now + hold });
+    const id = await ctx.db.insert("syncMeta", { season, ...DEFAULTS, ...patch });
     const fresh = await ctx.db.get(id);
-    return { claimed: true as const, state: fresh! };
+    return { claimed: true as const, state: fresh!, wide, long };
   },
 });
 
@@ -99,23 +112,36 @@ export const workerStateUploadUrl = mutation({
   },
 });
 
-/** Point the season at a freshly uploaded state file; delete the old one. */
+/** Point the season at a freshly uploaded state file; delete the old one.
+ *  With `expectedSavedAt` this is a compare-and-set: if another run committed
+ *  since this one loaded its state, the upload is discarded and false returned. */
 export const commitWorkerState = mutation({
   args: {
     secret: v.string(),
     season: v.number(),
     storageId: v.id("_storage"),
     savedAt: v.number(),
+    expectedSavedAt: v.optional(v.number()),
+    changed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { secret, season, storageId, savedAt }) => {
+  handler: async (ctx, { secret, season, storageId, savedAt, expectedSavedAt, changed }) => {
     requireSyncSecret(secret);
     const doc = await ctx.db
       .query("syncMeta")
       .withIndex("by_season", (q) => q.eq("season", season))
       .unique();
+    if (expectedSavedAt !== undefined && (doc?.workerStateSavedAt ?? 0) !== expectedSavedAt) {
+      await ctx.storage.delete(storageId);
+      return false;
+    }
     const oldId = doc?.workerStateId;
-    if (doc) await ctx.db.patch(doc._id, { workerStateId: storageId, workerStateSavedAt: savedAt });
-    else
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        workerStateId: storageId,
+        workerStateSavedAt: savedAt,
+        ...(changed ? { lastChangedAt: Date.now() } : {}),
+      });
+    } else
       await ctx.db.insert("syncMeta", {
         season,
         ...DEFAULTS,
@@ -123,6 +149,23 @@ export const commitWorkerState = mutation({
         workerStateSavedAt: savedAt,
       });
     if (oldId && oldId !== storageId) await ctx.storage.delete(oldId);
+    return true;
+  },
+});
+
+/** Drop a season's freshness tokens (in batches; call until it returns 0). Used
+ *  when a seed replaces the worker state, so every event gets re-read rather
+ *  than trusting tokens recorded against the state that was replaced. */
+export const clearFreshness = mutation({
+  args: { secret: v.string(), season: v.number() },
+  handler: async (ctx, { secret, season }) => {
+    requireSyncSecret(secret);
+    const batch = await ctx.db
+      .query("upstreamFreshness")
+      .withIndex("by_season_path", (q) => q.eq("season", season))
+      .take(500);
+    for (const doc of batch) await ctx.db.delete(doc._id);
+    return batch.length;
   },
 });
 

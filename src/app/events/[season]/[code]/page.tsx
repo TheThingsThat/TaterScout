@@ -74,7 +74,7 @@ export default async function EventPage({ params, searchParams }: Props) {
   // no lookahead) and post-event EPA/OPR (shown in the rankings table).
   const [epaMap, evStats] = await Promise.all([
     getRankingMap(season, ev.teams.map((t) => t.teamNumber)),
-    getEventStats(season, code),
+    getEventStats(season, code, ev.end),
   ]);
 
   // While an event is live, solve per-event OPR from the scores in THIS request

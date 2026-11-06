@@ -3,35 +3,27 @@
 // on ingest). If the store is due for a sync, run the shared incremental
 // refresh. Serverless-friendly: no daemon, no cron — visitors are the clock.
 //
-// Cadence lives in refresh.ts meta: 60s while results are flowing, 120s during
-// a quiet active window, 30min when no events are on (off-season). Races
-// between instances just produce a duplicate idempotent sync (bounded by the
-// meta claim below), never wrong data.
+// Cadence lives in refresh.ts. Races between instances are settled by its atomic
+// Convex claim, never by wrong data.
 //
 // NOTE: imports next/server — only import this module from app code (server
 // components / routes), never from CLI scripts.
 import { after } from "next/server";
-import { unstable_cache } from "next/cache";
-import { runRefresh, readSyncState, type SyncState } from "./refresh";
+import { CURRENT_SEASON } from "@/lib/season";
+import { runRefresh, nextSyncDueAt } from "./refresh";
 
-const ATTEMPT_MS = 30_000; // per-instance: skip even the meta read this often
+const ATTEMPT_MS = 30_000; // per-instance: skip even the claim this often
 let lastAttempt = 0;
 
-/** Sync state through a short shared cache. The status route and tick() both
- *  use this, so heartbeat tabs and page views collapse to ≤4 Convex reads/min
- *  fleet-wide instead of one uncached read per instance per tick. Freshness is
- *  only a pre-check — runRefresh's atomic claim is the real lock, and a ≤15s
- *  stale "due" just costs one no-op claim. */
-export const cachedSyncState = (season: number): Promise<SyncState | null> =>
-  unstable_cache(async () => readSyncState(season), ["sync-state", String(season)], {
-    revalidate: 15,
-  })();
-
-/** Call during render of any data page. Cheap no-op when recently attempted. */
+/** Call during render of any data page. Cheap no-op when recently attempted.
+ *  Only production syncs, and only the current season: past seasons don't change,
+ *  and a dev or preview server would run the real worker against shared quotas
+ *  (POST /api/refresh still works there for a manual sync). */
 export function scheduleAutoRefresh(season: number): void {
+  if (season !== CURRENT_SEASON || process.env.VERCEL_ENV !== "production") return;
   if (process.env.NEXT_PHASE === "phase-production-build") return; // not at build
   const now = Date.now();
-  if (now - lastAttempt < ATTEMPT_MS) return;
+  if (now < lastAttempt + ATTEMPT_MS || now < nextSyncDueAt()) return;
   lastAttempt = now;
   try {
     after(() => tick(season));
@@ -42,12 +34,6 @@ export function scheduleAutoRefresh(season: number): void {
 
 async function tick(season: number): Promise<void> {
   try {
-    // Cheap pre-check: skip when not due. The real cross-instance lock is
-    // runRefresh's atomic Convex claim — this read just avoids pointless
-    // claim attempts from every instance.
-    const state = await cachedSyncState(season);
-    if (state && Date.now() < state.nextCheckAt) return;
-
     const res = await runRefresh(season);
     if (res?.changed) {
       console.log(

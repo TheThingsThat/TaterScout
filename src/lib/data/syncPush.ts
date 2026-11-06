@@ -31,7 +31,7 @@ export async function syncTargetFromEnv(season: number): Promise<SyncTarget | nu
   return { client: cachedClient.client, secret, season };
 }
 
-function chunk<T>(arr: T[], size: number): T[][] {
+export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
@@ -54,6 +54,7 @@ export async function pushSiteDocs(
   target: SyncTarget,
   docs: SiteDocs,
   diff: ReturnType<typeof diffFingerprints>,
+  opts: { keepRanks?: boolean } = {},
 ): Promise<PushCounts> {
   const { client, secret, season } = target;
   const counts: PushCounts = {
@@ -77,12 +78,21 @@ export async function pushSiteDocs(
   const eventDocs = docs.events.filter((e) => eventSet.has(e.code));
 
   for (const batch of chunk(teamDocs, 400)) {
-    await client.mutation(api.sync.write.upsertTeams, { secret, season, rows: batch });
+    await client.mutation(api.sync.write.upsertTeams, {
+      secret,
+      season,
+      rows: batch,
+      keepRanks: opts.keepRanks,
+    });
     counts.teams += batch.length;
     counts.calls++;
   }
   for (const batch of chunk(trajDocs, 150)) {
-    await client.mutation(api.sync.write.upsertTrajectories, { secret, season, rows: batch });
+    await client.mutation(api.sync.write.upsertTrajectories, {
+      secret,
+      season,
+      rows: batch.map(({ points, ...doc }) => ({ ...doc, pointsJson: JSON.stringify(points) })),
+    });
     counts.trajectories += batch.length;
     counts.calls++;
   }
@@ -137,5 +147,9 @@ export function invalidateKeys(
   for (const k of diff.trajectories) delete out.trajectories[k];
   for (const k of diff.eventStats) delete out.eventStats[k];
   for (const k of diff.events) delete out.events[k];
+  // Deletions run last, so a failed push may have skipped them: keep a
+  // placeholder so the next diff still reports these keys as removed.
+  for (const k of diff.removedTeams) out.teams[k] = { stats: "", full: "" };
+  for (const k of diff.removedEvents) out.events[k] = "";
   return out;
 }

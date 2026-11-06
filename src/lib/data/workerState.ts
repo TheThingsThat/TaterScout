@@ -5,9 +5,9 @@
 //
 // Source of truth is Convex file storage (sync/state.ts) — any instance can
 // adopt the newest state and no external blob store is involved. Memory and a
-// /tmp file act as per-instance caches; the caller passes lastChangedAt as
-// `staleIfSavedBefore` so a cache older than the last cross-instance push is
-// skipped in favor of the Convex copy.
+// /tmp file act as per-instance caches; the caller passes workerStateSavedAt as
+// `staleIfSavedBefore` so a cache older than the committed file is skipped in
+// favor of the Convex copy.
 import { gzipSync, gunzipSync } from "node:zlib";
 import { readFileSync, writeFileSync } from "node:fs";
 import { api } from "@convex/_generated/api";
@@ -78,25 +78,42 @@ export async function loadWorkerState(
     }
   }
 
-  // A stale local copy beats nothing (the fingerprint diff self-corrects).
+  // With a staleness bound, a stale copy would silently drop updates whose
+  // freshness tokens are already stored: fail the run, which retries shortly.
+  if (opts.staleIfSavedBefore) {
+    throw new Error(`Could not load the current worker state for season ${season}.`);
+  }
+  // Unbounded callers (scripts): a stale local copy beats nothing.
   return cache.get(season) ?? fromTmp(season);
 }
 
-/** Persist worker state: memory + /tmp always; upload to the target's Convex
- *  file storage when a target is given (the cross-instance source of truth). */
+/** Persist worker state: upload to the target's Convex file storage when a
+ *  target is given (the cross-instance source of truth), then memory + /tmp. The
+ *  local caches only take it once the commit lands, so a failed upload can't
+ *  leave this instance holding state that no other instance has.
+ *
+ *  `expectedSavedAt` makes the commit a compare-and-set against the state this
+ *  run started from, so an overlapping run can't overwrite it; `changed` stamps
+ *  lastChangedAt in the same transaction. */
 export async function saveWorkerState(
   season: number,
   state: WorkerState,
   target?: SyncTarget | null,
+  opts: { expectedSavedAt?: number; changed?: boolean } = {},
 ): Promise<void> {
-  cache.set(season, state);
   const buf = gzipSync(Buffer.from(JSON.stringify(state)), { level: 6 });
-  try {
-    writeFileSync(tmpPath(season), buf);
-  } catch {
-    /* read-only fs is fine */
+  const cacheLocally = () => {
+    cache.set(season, state);
+    try {
+      writeFileSync(tmpPath(season), buf);
+    } catch {
+      /* read-only fs is fine */
+    }
+  };
+  if (!target) {
+    cacheLocally();
+    return;
   }
-  if (!target) return;
 
   const uploadUrl: string = await target.client.mutation(api.sync.state.workerStateUploadUrl, {
     secret: target.secret,
@@ -108,10 +125,16 @@ export async function saveWorkerState(
   });
   if (!res.ok) throw new Error(`worker-state upload failed: HTTP ${res.status}`);
   const { storageId } = (await res.json()) as { storageId: string };
-  await target.client.mutation(api.sync.state.commitWorkerState, {
+  const committed = await target.client.mutation(api.sync.state.commitWorkerState, {
     secret: target.secret,
     season,
     storageId: storageId as never,
     savedAt: state.savedAt,
+    expectedSavedAt: opts.expectedSavedAt,
+    changed: opts.changed,
   });
+  if (committed === false) {
+    throw new Error("Worker state was replaced by another run; this run's state was discarded.");
+  }
+  cacheLocally();
 }

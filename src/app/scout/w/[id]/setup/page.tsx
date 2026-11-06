@@ -23,7 +23,7 @@ interface EventResult {
 
 function Setup({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.list, { workspaceId: id });
+  const teams = useQuery(api.teams.roster, { workspaceId: id });
   const setEvent = useMutation(api.workspaces.setEvent);
   const setMyTeam = useMutation(api.workspaces.setMyTeam);
   const importSnapshot = useMutation(api.events.importSnapshot);

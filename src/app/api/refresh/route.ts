@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { runRefresh, readSyncState } from "@/lib/data/refresh";
+import { runRefresh, nextSyncDueAt } from "@/lib/data/refresh";
 import { CURRENT_SEASON as SEASON } from "@/lib/season";
 
 // On-demand, never cached; allow up to 60s for a recompute.
@@ -59,8 +59,7 @@ export async function GET(req: NextRequest) {
   // cadence so an every-minute cron only does real work when the store is due.
   after(async () => {
     try {
-      const state = await readSyncState(SEASON);
-      if (state && Date.now() < state.nextCheckAt) return; // not due yet — skip cheaply
+      if (Date.now() < nextSyncDueAt()) return; // not due yet — skip without calling Convex
       const res = await runRefresh(SEASON);
       if (res?.changed) {
         console.log(`[cron refresh] +${res.newMatches} matches in ${res.ms}ms`);

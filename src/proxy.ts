@@ -35,7 +35,7 @@ const hits = new Map<string, { n: number; resetAt: number }>();
 
 // /api/status is intentionally NOT metered: it's the once-a-minute heartbeat,
 // so a venue with many open tabs would spend its whole budget on it, and its
-// cost is already bounded by the sync cadence + shared 15s cache.
+// cost is already bounded by the sync cadence (it reads nothing itself).
 const isMetered = createRouteMatcher([
   "/teams/(.*)",
   "/events/(.*)",

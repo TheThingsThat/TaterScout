@@ -250,8 +250,11 @@ export default defineSchema({
         s: v.union(v.string(), v.null()),
       }),
     ),
-    // [dtMin, localEventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, num?, series?]
-    points: v.array(v.array(v.union(v.number(), v.null()))),
+    // Rows of [dtMin, localEventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, num?, series?].
+    // Written as a JSON string, about half the size of the array form. `points`
+    // is the older form; rows keep it until they are next written.
+    pointsJson: v.optional(v.string()),
+    points: v.optional(v.array(v.array(v.union(v.number(), v.null())))),
   }).index("by_season_team", ["season", "team"]),
 
   // One doc per (season, event): team -> [preTot, preAuto, postTot, postAuto, oprNp, oprAuto].
@@ -283,8 +286,9 @@ export default defineSchema({
     lastSyncAt: v.number(),
     nextCheckAt: v.number(),
     lastWideAt: v.number(),
-    lastRankSyncAt: v.number(), // 30-min rank-reconcile cadence
-    lastChangedAt: v.number(), // when season tables last changed (worker-state staleness check)
+    lastLongSweepAt: v.optional(v.number()), // daily ±14/+3-day sweep
+    lastRankSyncAt: v.number(), // daily rank-reconcile cadence
+    lastChangedAt: v.number(), // when match data last changed (drives quiet back-off)
     // The sync worker's state file (raw events + fingerprints, gzipped JSON,
     // ~2MB — far over the 1MB doc limit, hence file storage). One file per
     // season; commitWorkerState deletes the previous one.

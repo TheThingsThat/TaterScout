@@ -126,11 +126,21 @@ export async function queryRankings(
   season: number,
   q: RankingQuery,
 ): Promise<{ rows: TeamRanking[]; total: number; page: number; pages: number }> {
+  // Normalize against the cached meta first: `region` and `page` come straight
+  // from the URL, and every distinct value would otherwise miss the cache.
+  const meta = (await siteMeta(season))?.v;
+  if (!meta) return { rows: [], total: 0, page: 1, pages: 0 }; // Convex unavailable
+  const region = q.region ?? null;
+  if (region !== null && !Object.hasOwn(meta.regionCounts, region)) {
+    return { rows: [], total: 0, page: 1, pages: 1 };
+  }
+  const total = region !== null ? meta.regionCounts[region] : (meta.sortCounts[q.sort] ?? 0);
+  const lastPage = Math.max(1, Math.ceil(total / q.pageSize));
   const r = await sitePage(season, {
     sort: q.sort,
     dir: q.dir,
-    region: q.region ?? null,
-    page: q.page,
+    region,
+    page: Math.min(Math.max(1, Math.floor(q.page) || 1), lastPage),
     pageSize: q.pageSize,
   });
   if (!r) return { rows: [], total: 0, page: 1, pages: 0 }; // Convex unavailable

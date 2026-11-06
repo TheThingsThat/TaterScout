@@ -4,15 +4,15 @@
 // traffic-driven auto-refresh (autoRefresh.ts) so both stay one implementation.
 //
 // Flow per run: atomic claim (Convex CAS — the real multi-instance lock) →
-// upstream gate (If-Modified-Since per window event; all 304 = done, no
-// recompute) → full-season recompute → diffed batched push → persist worker
+// upstream gate (If-Modified-Since per window event; all 304 = done, worker state
+// never loaded) → full-season recompute → diffed batched push → persist worker
 // state (raw + fingerprints, one gzipped object).
 import { api } from "@convex/_generated/api";
-import { fetchActiveWindow, fetchDeltas } from "./crawl";
+import { fetchActiveWindow, fetchDeltas, probeEvents, type FreshnessToken } from "./crawl";
 import { computeSeasonData } from "./compute";
 import { loadWorkerState, saveWorkerState } from "./workerState";
-import { buildSiteDocs, diffFingerprints } from "./fingerprint";
-import { pushSiteDocs, invalidateKeys, syncTargetFromEnv, type PushCounts } from "./syncPush";
+import { buildSiteDocs, diffFingerprints, fingerprintsAfterPush } from "./fingerprint";
+import { chunk, pushSiteDocs, invalidateKeys, syncTargetFromEnv, type PushCounts } from "./syncPush";
 
 export interface RefreshSummary {
   changed: boolean;
@@ -26,36 +26,43 @@ export interface RefreshSummary {
   ms: number;
 }
 
-export interface SyncState {
-  lastSyncAt: number;
-  nextCheckAt: number;
-  lastWideAt: number;
-  lastRankSyncAt: number;
-  lastChangedAt: number;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+// Adaptive cadence, sized to Convex's free plan: EPA/OPR lag by this much, while
+// scores on event pages stay live from FIRST.
+const NEXT_AFTER_IDLE_MS = HOUR; // no active events (off-season)
+
+function nextDelayMs(changed: boolean, windowSize: number, lastChangedAt: number, now: number): number {
+  if (changed) {
+    const month = new Date(now).getUTCMonth();
+    return month === 11 || month <= 3 ? 10 * MINUTE : 5 * MINUTE; // Dec-Apr: peak, and the largest state file
+  }
+  if (windowSize === 0) return NEXT_AFTER_IDLE_MS;
+  const quietFor = now - lastChangedAt;
+  return quietFor < HOUR ? 15 * MINUTE : quietFor < 3 * HOUR ? 30 * MINUTE : HOUR;
 }
 
-// Adaptive cadence: sync often while results are flowing, back off when quiet.
-const NEXT_AFTER_CHANGE_MS = 60_000; // matches ~7-min FTC cycle with headroom
-const NEXT_AFTER_QUIET_MS = 120_000; // active window but nothing changed
-const NEXT_AFTER_IDLE_MS = 30 * 60_000; // no active events (off-season)
+// The frequent path scopes to ongoing events only. A -3/+1-day sweep runs hourly,
+// and the full -14/+3-day sweep daily so late edits to older events still land.
+const WIDE_INTERVAL_MS = HOUR;
+const WIDE_LOOKBACK_DAYS = 3;
+const WIDE_LOOKAHEAD_DAYS = 1;
+const LONG_SWEEP_INTERVAL_MS = 24 * HOUR;
 
-// The frequent path scopes to ongoing events only; a wider ±14/+3d sweep runs
-// at most this often. Rank labels reconcile on the same cadence (user decision:
-// EPA/OPR values live every sync, rank numbers may lag ≤30 min).
-const WIDE_INTERVAL_MS = 30 * 60_000;
+// EPA/OPR values update every sync; rank numbers may lag up to this long, because
+// one change moves thousands of ranks (user decision).
+const RANK_INTERVAL_MS = 24 * HOUR;
+
+const HOLD_MS = 90_000; // how long a claim blocks other instances
+const FETCH_BUDGET_MS = 35_000; // leaves room for the recompute + push inside a 60s route
 
 let inFlight = false; // per-instance; the Convex claim is the cross-instance lock
+let nextDueAt = 0;
 
-/** Current sync state straight from Convex (no cache — coordination signal). */
-export async function readSyncState(season: number): Promise<SyncState | null> {
-  const target = await syncTargetFromEnv(season);
-  if (!target) return null;
-  try {
-    return await target.client.query(api.sync.state.get, { season });
-  } catch {
-    return null;
-  }
-}
+/** When this instance last learned the next sync is due (0 = unknown). Lets
+ *  callers skip even the claim call until then. */
+export const nextSyncDueAt = (): number => nextDueAt;
 
 /**
  * Run one incremental sync. Returns null when another instance holds the slot
@@ -81,24 +88,102 @@ export async function runRefresh(
     const claim = await target.client.mutation(api.sync.state.claim, {
       secret: target.secret,
       season,
-      holdMs: 90_000,
+      holdMs: HOLD_MS,
       force: manual,
+      wideAfterMs: WIDE_INTERVAL_MS,
+      longAfterMs: LONG_SWEEP_INTERVAL_MS,
     });
-    if (!claim.claimed) return null;
+    if (!claim.claimed) {
+      nextDueAt = claim.state.nextCheckAt;
+      return null;
+    }
     const state = claim.state;
     const now = Date.now();
+    nextDueAt = now + HOLD_MS;
 
-    const wide = manual || now - (state.lastWideAt ?? 0) > WIDE_INTERVAL_MS;
-    // Rank reconcile piggybacks the wide sweep, and only when data has actually
-    // changed since the last reconcile (otherwise ranks can't have drifted).
+    const long = manual || claim.long;
+    const wide = long || claim.wide;
+    // Ranks can only have drifted if data changed since the last reconcile.
     const rankSyncDue =
-      opts.full === true || (wide && (state.lastChangedAt ?? 0) > (state.lastRankSyncAt ?? 0));
+      opts.full === true ||
+      ((state.lastChangedAt ?? 0) > (state.lastRankSyncAt ?? 0) &&
+        now - (state.lastRankSyncAt ?? 0) > RANK_INTERVAL_MS);
 
-    // Worker state: memory-first; re-fetched from Convex file storage when
-    // another instance has pushed since our copy was saved.
+    // Upstream gate: conditional per-event /matches probes (304 = skip).
+    const window = await fetchActiveWindow(
+      season,
+      long ? undefined : wide ? WIDE_LOOKBACK_DAYS : 0,
+      long ? undefined : wide ? WIDE_LOOKAHEAD_DAYS : 0,
+    );
+    const freshness: Record<string, string> = {};
+    try {
+      for (const codes of chunk(window, 200)) {
+        Object.assign(
+          freshness,
+          await target.client.query(api.sync.state.freshness, {
+            season,
+            paths: codes.map((c) => `matches/${c}`),
+          }),
+        );
+      }
+    } catch {
+      /* no tokens — remaining probes go unconditional this round */
+    }
+    const deadline = t0 + FETCH_BUDGET_MS;
+    const probes = await probeEvents(season, window, freshness, deadline);
+
+    // Written only after the sync's work has landed: a token stored earlier would
+    // turn a killed or failed run into a 304, and that update would be lost.
+    const saveTokens = async (tokens: FreshnessToken[]) => {
+      try {
+        for (const batch of chunk(tokens, 200)) {
+          await target.client.mutation(api.sync.state.putFreshness, {
+            secret: target.secret,
+            season,
+            tokens: batch,
+          });
+        }
+      } catch {
+        /* best-effort — a lost token only costs one extra 200 next round */
+      }
+    };
+
+    const finish = async (changed: boolean, rankSynced: boolean) => {
+      nextDueAt =
+        Date.now() + nextDelayMs(changed, window.length, state.lastChangedAt ?? 0, Date.now());
+      await target.client.mutation(api.sync.state.finish, {
+        secret: target.secret,
+        season,
+        nextCheckAt: nextDueAt,
+        changed,
+        wide,
+        rankSynced,
+      });
+    };
+
+    const finishQuiet = async (tokens: FreshnessToken[]): Promise<RefreshSummary> => {
+      await saveTokens(tokens);
+      await finish(false, false);
+      return {
+        changed: false,
+        newEvents: 0,
+        updatedEvents: 0,
+        newMatches: 0,
+        windowSize: window.length,
+        skipped304: probes.skipped304,
+        wrote: null,
+        rankSynced: false,
+        ms: Date.now() - t0,
+      };
+    };
+
+    if (probes.updates.length === 0 && !rankSyncDue) return await finishQuiet(probes.tokens);
+
+    // Worker state: memory-first; re-fetched from Convex file storage only when
+    // the committed file is newer than our copy. A 2MB download, hence the gate.
     const worker = await loadWorkerState(season, {
       target,
-      staleIfSavedBefore: state.lastChangedAt > 0 ? state.lastChangedAt : undefined,
+      staleIfSavedBefore: state.workerStateSavedAt,
     });
     if (!worker || worker.events.length === 0) {
       throw new Error(
@@ -106,108 +191,53 @@ export async function runRefresh(
       );
     }
 
-    // Upstream gate: conditional per-event /matches probes (304 = skip).
-    const window = await fetchActiveWindow(
-      season,
-      wide ? undefined : 0,
-      wide ? undefined : 0,
-    );
-    let freshness: Record<string, string> = {};
-    if (window.length > 0 && window.length <= 200) {
-      try {
-        freshness = await target.client.query(api.sync.state.freshness, {
-          season,
-          paths: window.map((c) => `matches/${c}`),
-        });
-      } catch {
-        /* no tokens — probes go unconditional this round */
-      }
-    }
-    const delta = await fetchDeltas(season, worker.events, { window }, freshness);
-
-    if (delta.tokens.length > 0) {
-      try {
-        await target.client.mutation(api.sync.state.putFreshness, {
-          secret: target.secret,
-          season,
-          tokens: delta.tokens.slice(0, 200),
-        });
-      } catch {
-        /* best-effort — a lost token only costs one extra 200 next round */
-      }
-    }
-
-    const finish = async (changed: boolean, rankSynced: boolean) => {
-      await target.client.mutation(api.sync.state.finish, {
-        secret: target.secret,
-        season,
-        nextCheckAt:
-          Date.now() +
-          (changed
-            ? NEXT_AFTER_CHANGE_MS
-            : delta.windowSize > 0
-              ? NEXT_AFTER_QUIET_MS
-              : NEXT_AFTER_IDLE_MS),
-        changed,
-        wide,
-        rankSynced,
-      });
-    };
-
-    if (!delta.changed && !opts.full && !rankSyncDue) {
-      await finish(false, false);
-      return {
-        changed: false,
-        newEvents: 0,
-        updatedEvents: 0,
-        newMatches: 0,
-        windowSize: delta.windowSize,
-        skipped304: delta.skipped304,
-        wrote: null,
-        rankSynced: false,
-        ms: Date.now() - t0,
-      };
-    }
+    const delta = await fetchDeltas(season, worker.events, probes, deadline);
+    if (!delta.changed && !rankSyncDue) return await finishQuiet(delta.tokens);
 
     // Recompute the whole season (cheap, ~1-2s), then persist only the delta.
     const computed = computeSeasonData(season, delta.events);
     const { docs, fingerprints } = buildSiteDocs(computed);
-    const mode = opts.full || rankSyncDue ? "full" : "stats";
+    const mode = rankSyncDue ? "full" : "stats";
     const prevFp = opts.full ? null : worker.fingerprints;
     const diff = diffFingerprints(fingerprints, prevFp, mode);
+    const nextFp = fingerprintsAfterPush(fingerprints, prevFp, diff, mode);
 
     let wrote: PushCounts;
     try {
-      wrote = await pushSiteDocs(target, docs, diff);
+      wrote = await pushSiteDocs(target, docs, diff, { keepRanks: mode === "stats" });
     } catch (e) {
       // A failed batch may have landed partially: drop the attempted keys from
-      // the fingerprint map so the next sync rewrites them (self-healing).
+      // the fingerprint map so the next sync rewrites them. Keeping the OLD events
+      // means that sync sees the same change again and gets that far (self-healing).
       await saveWorkerState(
         season,
         {
           savedAt: Date.now(),
-          events: delta.events,
-          fingerprints: invalidateKeys(fingerprints, diff),
+          events: worker.events,
+          fingerprints: invalidateKeys(nextFp, diff),
         },
         target,
+        { expectedSavedAt: state.workerStateSavedAt ?? 0 },
       );
       throw e;
     }
 
     await saveWorkerState(
       season,
-      { savedAt: Date.now(), events: delta.events, fingerprints },
+      { savedAt: Date.now(), events: delta.events, fingerprints: nextFp },
       target,
+      { expectedSavedAt: state.workerStateSavedAt ?? 0, changed: delta.changed },
     );
-    await finish(true, mode === "full");
+    await saveTokens(delta.tokens);
+    await finish(delta.changed, mode === "full");
 
     return {
       changed: true,
       newEvents: delta.newEvents.length,
       updatedEvents: delta.updatedEvents.length,
       newMatches: delta.newMatches,
-      windowSize: delta.windowSize,
-      skipped304: delta.skipped304,
+      windowSize: window.length,
+      skipped304: probes.skipped304,
       wrote,
       rankSynced: mode === "full",
       ms: Date.now() - t0,

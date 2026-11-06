@@ -43,12 +43,16 @@ function rowsToMap(rows: Record<string, Row>): Map<number, EventTeamStat> {
   return out;
 }
 
+const SETTLED_AFTER_MS = 14 * 86_400_000; // past the longest sync sweep window
+
 /** Time-aware per-team ratings for one event, keyed by team number. Empty when
  *  the event isn't in the precomputed data (e.g. live/unfinished). */
 export async function getEventStats(
   season: number,
   code: string,
+  eventEnd: string,
 ): Promise<Map<number, EventTeamStat>> {
-  const r = await siteEventStats(season, code);
+  const settled = Date.now() - Date.parse(eventEnd) > SETTLED_AFTER_MS; // false for a bad date
+  const r = await siteEventStats(season, code, settled);
   return r?.v ? rowsToMap(r.v.rows) : new Map();
 }

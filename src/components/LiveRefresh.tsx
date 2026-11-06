@@ -11,7 +11,9 @@ export default function LiveRefresh({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => router.refresh(), 30_000);
+    const id = setInterval(() => {
+      if (!document.hidden) router.refresh();
+    }, 30_000);
     return () => clearInterval(id);
   }, [enabled, router]);
   return null;

@@ -171,7 +171,7 @@ function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season:
 
 function Overview({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.list, { workspaceId: id });
+  const teams = useQuery(api.teams.roster, { workspaceId: id });
   const schedule = useQuery(api.match.schedule, { workspaceId: id });
   const rotateJoinCode = useMutation(api.workspaces.rotateJoinCode);
   const isDesktop = useIsDesktop();

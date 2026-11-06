@@ -60,12 +60,14 @@ Visitors are the clock: every data-page render and every heartbeat ping
 check (Next `after()`). When a sync is due, one instance wins the atomic
 Convex claim, probes the active event window with If-Modified-Since (real 304s
 from FIRST), recomputes, and pushes only fingerprint-changed rows. Cadence
-adapts: 60s while results are flowing, 120s during a quiet active window,
-30 min off-season.
+adapts, sized to Convex's free plan: 5 min after a change (10 min Dec-Apr),
+15/30/60 min as a quiet active window drags on, 60 min off-season. Rank numbers
+reconcile daily. Only Vercel production auto-syncs; elsewhere use
+`POST /api/refresh`.
 
 Optionally, a scheduled trigger makes freshness traffic-independent — an
 external cron (Hobby) or Vercel Cron (Pro) hitting `GET /api/refresh` with
-`Authorization: Bearer <CRON_SECRET>` every minute. Without it, a zero-visitor
+`Authorization: Bearer <CRON_SECRET>`. Without it, a zero-visitor
 stretch simply means no sync until the next page view.
 
 ## Before opening signups to the public

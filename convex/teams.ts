@@ -2,6 +2,23 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireMember } from "./lib";
 
+const byRank = (a: { rank?: number | null; teamNumber: number }, b: { rank?: number | null; teamNumber: number }) =>
+  (a.rank ?? 1e9) - (b.rank ?? 1e9) || a.teamNumber - b.teamNumber;
+
+/** Imported team stats only. Prefer this over `list` wherever report and pit
+ *  counts aren't shown: it doesn't re-run for every client on every report saved. */
+export const roster = query({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    await requireMember(ctx, workspaceId);
+    const teams = await ctx.db
+      .query("teamEvents")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    return teams.sort(byRank);
+  },
+});
+
 /** Team list for the event: imported stats + match-report count + pit status. */
 export const list = query({
   args: { workspaceId: v.id("workspaces") },
@@ -31,7 +48,7 @@ export const list = query({
         pitScouted: pitByTeam.has(t.teamNumber),
         robotStatus: pitByTeam.get(t.teamNumber)?.robotStatus ?? null,
       }))
-      .sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || a.teamNumber - b.teamNumber);
+      .sort(byRank);
   },
 });
 

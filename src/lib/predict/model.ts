@@ -4,7 +4,7 @@
 // in the precompute (scripts/build-epa.ts) — see computeSimModel there.
 
 export interface RpCategory {
-  name: string; // e.g. "movementRp"
+  name: string; // e.g. "bonusRp1"
   a: number; // logistic intercept
   b: number; // logistic slope on alliance EPA-sum
 }
@@ -119,11 +119,11 @@ export interface SimMatch {
   blueTeams: number[];
   redNp: number;
   blueNp: number;
-  redRp: number[]; // [movement, goal, pattern] 0/1
+  redRp: number[]; // the game's three bonus RPs, 0/1
   blueRp: number[];
 }
 
-const RP_NAMES = ["movementRp", "goalRp", "patternRp"];
+const RP_NAMES = ["bonusRp1", "bonusRp2", "bonusRp3"];
 
 /** Build the season simulation model from played matches + a team→EPA lookup.
  *  Falls back to the season-agnostic defaults until the sample is meaningful —
@@ -132,7 +132,7 @@ const RP_NAMES = ["movementRp", "goalRp", "patternRp"];
 export function computeSimModel(
   matches: SimMatch[],
   epaOf: (team: number) => number | undefined,
-  winRp = 2,
+  winRp = 3, // matched against FIRST ranking scores: both DECODE and BIOBUZZ
 ): SimModel {
   if (matches.length < 50) return DEFAULT_SIM_MODEL;
   const scores: number[] = [];

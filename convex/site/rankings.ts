@@ -46,9 +46,45 @@ function rankRange(ctx: QueryCtx, season: number, sort: SortKey, lo: number, hi:
   }
 }
 
+// A region's rows on the sort key's rank index, if it has one: `ranked` is
+// best-first, `unranked` the null-stat teams. Null sorts before numbers in an
+// index, so gte(1) leaves those out.
+function regionByRank(ctx: QueryCtx, season: number, region: string, sort: SortKey) {
+  const base = () => ctx.db.query("seasonTeams");
+  if (sort === "epa") {
+    return {
+      ranked: base().withIndex("by_season_region_rkEpa", (q) => q.eq("season", season).eq("region", region).gte("rkEpa", 1)),
+      unranked: base().withIndex("by_season_region_rkEpa", (q) => q.eq("season", season).eq("region", region).eq("rkEpa", null)),
+    };
+  }
+  if (sort === "oprNp") {
+    return {
+      ranked: base().withIndex("by_season_region_rkOprNp", (q) => q.eq("season", season).eq("region", region).gte("rkOprNp", 1)),
+      unranked: base().withIndex("by_season_region_rkOprNp", (q) => q.eq("season", season).eq("region", region).eq("rkOprNp", null)),
+    };
+  }
+  return null;
+}
+
+type TeamDocRow = { team: number } & Record<SortKey, number | null>;
+
+// Ranks are reconciled daily while values update every sync, so the rank range
+// picks WHICH teams are on a page and this orders them by current value.
+function byValue<T extends TeamDocRow>(rows: T[], sort: SortKey, dir: "asc" | "desc"): T[] {
+  return [...rows].sort((x, y) => {
+    const xv = x[sort];
+    const yv = y[sort];
+    if (xv == null && yv == null) return x.team - y.team;
+    if (xv == null) return 1;
+    if (yv == null) return -1;
+    return dir === "desc" ? yv - xv : xv - yv;
+  });
+}
+
 /** One leaderboard page. Global pages read exactly `pageSize` docs via a rank
- *  range; region pages read the whole (small, ≤~650 doc) region and sort in
- *  memory so null-stat teams still appear at the tail like the file backend. */
+ *  range. Region pages read only as far as the page when the default sort has a
+ *  rank index; otherwise they read the whole (small, ≤~650 doc) region and sort
+ *  in memory so null-stat teams still appear at the tail like the file backend. */
 export const page = query({
   args: {
     season: v.number(),
@@ -75,7 +111,7 @@ export const page = query({
       const lo = a.dir === "desc" ? (p - 1) * ps + 1 : total - p * ps + 1;
       const hi = a.dir === "desc" ? p * ps : total - (p - 1) * ps;
       const rows = hi < 1 ? [] : await rankRange(ctx, season, a.sort, lo, hi, a.dir === "desc" ? "asc" : "desc").take(ps);
-      return { rows, total, page: p, pages };
+      return { rows: byValue(rows, a.sort, a.dir), total, page: p, pages };
     }
 
     // Region view: eq(season, region) prefix on the region index returns the
@@ -87,6 +123,22 @@ export const page = query({
     if (!(a.region in (metaDoc.regionCounts ?? {}))) {
       return { rows: [], total: 0, page: 1, pages: 1 };
     }
+    const regionTotal = metaDoc.regionCounts[a.region] ?? 0;
+    const regionPages = Math.max(1, Math.ceil(regionTotal / ps));
+    const regionPage = Math.min(Math.max(1, Math.floor(a.page)), regionPages);
+    const byRank = a.dir === "desc" ? regionByRank(ctx, season, a.region, a.sort) : null;
+    if (byRank) {
+      // Every page of this view comes from the same order (rank, then null-stat
+      // teams by number), so no team lands on two pages or none.
+      let ordered = await byRank.ranked.take(regionPage * ps);
+      if (ordered.length < regionPage * ps) {
+        const unranked = await byRank.unranked.take(1500);
+        ordered = [...ordered, ...unranked.sort((x, y) => x.team - y.team)];
+      }
+      const rows = ordered.slice((regionPage - 1) * ps, regionPage * ps);
+      return { rows: byValue(rows, a.sort, a.dir), total: regionTotal, page: regionPage, pages: regionPages };
+    }
+
     // The cap is ~2x the largest real region. Exceeding it would silently drop
     // teams, so treat that as a bug to see rather than a quiet wrong answer.
     const REGION_CAP = 1500;

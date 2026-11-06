@@ -32,19 +32,27 @@ interface FirstMatch {
   tournamentLevel: string; // "PRACTICE" | "QUALIFICATION" | "PLAYOFF"
   series: number;
   matchNumber: number;
+  // `score{X}Foul` is the penalty points X COMMITTED (credited to the other
+  // alliance), so X's no-penalty score is its final minus the OPPONENT's foul.
+  scoreRedFinal: number | null;
+  scoreRedFoul: number | null;
+  scoreRedAuto: number | null;
+  scoreBlueFinal: number | null;
+  scoreBlueFoul: number | null;
+  scoreBlueAuto: number | null;
   teams: FirstMatchTeam[];
   modifiedOn?: string | null;
 }
 interface FirstAllianceScore {
   alliance: "Red" | "Blue";
-  autoPoints: number;
-  teleopPoints: number;
-  // Ranking-point flags are GAME-SPECIFIC (these are DECODE 2025's). For a new
-  // season they read as undefined → 0 until mapped to the new game's fields;
-  // the auto/teleop point totals have kept their names across seasons.
-  movementRP?: boolean;
+  // Ranking-point flags are GAME-SPECIFIC. A new season's read as undefined → 0
+  // until they are added to rpFlags below.
+  movementRP?: boolean; // DECODE 2025
   goalRP?: boolean;
   patternRP?: boolean;
+  swarmRP?: boolean; // BIOBUZZ 2026
+  pollinator1RP?: boolean;
+  pollinator2RP?: boolean;
 }
 interface FirstMatchScore {
   matchLevel: string;
@@ -106,6 +114,17 @@ async function fetchEventTeams(season: number, code: string): Promise<Map<number
   return map;
 }
 
+/** One alliance's bonus ranking points as positional 0/1 flags. */
+const rpFlags = (a?: FirstAllianceScore): number[] =>
+  [a?.movementRP ?? a?.swarmRP, a?.goalRP ?? a?.pollinator1RP, a?.patternRP ?? a?.pollinator2RP].map(
+    (earned) => (earned ? 1 : 0),
+  );
+
+const isPlayed = (m: FirstMatch): boolean =>
+  m.tournamentLevel !== "PRACTICE" &&
+  typeof m.scoreRedFinal === "number" &&
+  typeof m.scoreBlueFinal === "number";
+
 /** Join matches + score breakdowns into RawMatch[] (played matches only). */
 function buildRawEvent(
   detail: FirstEvent,
@@ -133,19 +152,25 @@ function buildRawEvent(
     (a, b) => a.matchNumber - b.matchNumber || a.series - b.series,
   );
   for (const m of ordered) {
-    if (m.tournamentLevel === "PRACTICE") continue;
+    if (!isPlayed(m)) continue;
+    // Point totals come from the match row, not the per-game score breakdown:
+    // FIRST serves the breakdown zeroed until a new season's score model ships
+    // (BIOBUZZ's first events posted real finals with all-zero breakdowns), and
+    // the two agree exactly once it does (checked on 2,850 DECODE alliance rows).
+    const ra = m.scoreRedAuto ?? 0;
+    const ba = m.scoreBlueAuto ?? 0;
+    const rt = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0) - ra;
+    const bt = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0) - ba;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
-    if (!sc?.red || !sc?.blue) continue; // unplayed / no breakdown
-    // Season-rollover guard: if a new game's breakdown renames the point
-    // totals, skip the match rather than ingesting NaN into every rating.
-    if (
-      typeof sc.red.autoPoints !== "number" || typeof sc.red.teleopPoints !== "number" ||
-      typeof sc.blue.autoPoints !== "number" || typeof sc.blue.teleopPoints !== "number"
-    ) continue;
     const time = Date.parse(m.actualStartTime ?? m.postResultTime ?? m.scheduledStartTime ?? "");
     if (Number.isNaN(time)) continue;
-    const red = m.teams.filter((t) => t.onField && t.station.startsWith("Red")).map((t) => t.teamNumber);
-    const blue = m.teams.filter((t) => t.onField && t.station.startsWith("Blue")).map((t) => t.teamNumber);
+    // A scored match with NO team flagged on-field is an upstream artifact (a
+    // whole finished event has come back that way), not 4 no-shows: ignore the flag.
+    const flagged = m.teams.some((t) => t.onField);
+    const present = (side: string) =>
+      m.teams.filter((t) => (t.onField || !flagged) && t.station.startsWith(side)).map((t) => t.teamNumber);
+    const red = present("Red");
+    const blue = present("Blue");
     if (!red.length || !blue.length) continue;
     for (const t of [...red, ...blue]) teamNums.add(t);
     if (m.modifiedOn && (!updatedAt || m.modifiedOn > updatedAt)) updatedAt = m.modifiedOn;
@@ -157,12 +182,12 @@ function buildRawEvent(
       series: m.series,
       red,
       blue,
-      ra: sc.red.autoPoints,
-      rt: sc.red.teleopPoints,
-      ba: sc.blue.autoPoints,
-      bt: sc.blue.teleopPoints,
-      rrp: [sc.red.movementRP ? 1 : 0, sc.red.goalRP ? 1 : 0, sc.red.patternRP ? 1 : 0],
-      brp: [sc.blue.movementRP ? 1 : 0, sc.blue.goalRP ? 1 : 0, sc.blue.patternRP ? 1 : 0],
+      ra,
+      rt,
+      ba,
+      bt,
+      rrp: rpFlags(sc?.red),
+      brp: rpFlags(sc?.blue),
     });
   }
 
@@ -242,59 +267,85 @@ export async function fetchActiveWindow(
 
 const natKey = (m: RawMatch) => `${m.level}|${m.series}|${m.num}`;
 
+/** Run `fn` over `items`, CONCURRENCY at a time, starting nothing past `deadline`.
+ *  Items left over simply wait for the next sync. */
+async function pool<T>(items: T[], deadline: number, fn: (item: T) => Promise<void>): Promise<void> {
+  const queue = [...items];
+  await Promise.all(
+    Array.from({ length: CONCURRENCY }, async () => {
+      while (queue.length && Date.now() < deadline) await fn(queue.shift()!);
+    }),
+  );
+}
+
+export interface FreshnessToken {
+  path: string;
+  lastModified: string;
+}
+
+export interface ProbeResult {
+  updates: { code: string; matches: FirstMatch[]; lastModified: string | null }[]; // events to re-ingest
+  skipped304: number; // events skipped via If-Modified-Since
+  tokens: FreshnessToken[]; // Last-Modified values for events with nothing to ingest
+}
+
+/** The upstream gate (Statbotics pattern): each event's /matches call goes out
+ *  with If-Modified-Since from `freshness`. This costs no Convex usage, so the
+ *  caller only loads worker state when `updates` is non-empty. */
+export async function probeEvents(
+  season: number,
+  window: string[],
+  freshness: Record<string, string>,
+  deadline: number,
+): Promise<ProbeResult> {
+  const out: ProbeResult = { updates: [], skipped304: 0, tokens: [] };
+  await pool(window, deadline, async (code) => {
+    try {
+      const probe = await firstGetConditional<{ matches: FirstMatch[] }>(
+        `${season}/matches/${code}`,
+        freshness[`matches/${code}`],
+      );
+      if (probe.notModified) {
+        out.skipped304++;
+        return;
+      }
+      if (!probe.data) return; // 404 — no matches posted yet
+      const matches = probe.data.matches ?? [];
+      if (matches.some(isPlayed)) {
+        out.updates.push({ code, matches, lastModified: probe.lastModified });
+      } else if (probe.lastModified) {
+        // Schedule only: nothing to ingest until FIRST modifies it again.
+        out.tokens.push({ path: `matches/${code}`, lastModified: probe.lastModified });
+      }
+    } catch {
+      /* no token recorded, so the next sync probes it again */
+    }
+  });
+  return out;
+}
+
 export interface DeltaResult {
   events: RawEvent[];
   changed: boolean;
   newEvents: string[];
   updatedEvents: string[];
   newMatches: number;
-  windowSize: number; // active-window events scanned (0 = idle/off-season)
-  skipped304: number; // events skipped via If-Modified-Since (no fetch beyond the probe)
-  tokens: { path: string; lastModified: string }[]; // fresh Last-Modified values to persist
+  tokens: FreshnessToken[]; // fresh Last-Modified values to persist after the push
 }
 
-/** Re-ingest the active-window events and merge; report only real changes.
- *
- *  The upstream gate (Statbotics pattern): each event's /matches call goes out
- *  with If-Modified-Since from `freshness` — a 304 skips the event entirely
- *  (its scores/teams/detail calls too, a 4-5x cut in FIRST traffic). On a 200
- *  the matches body is REUSED for the build (no double fetch), and the existing
- *  modifiedOn/match-count comparison stays as the change backstop.
- *
- *  `opts` scopes the window — `{ lookbackDays: 0, lookaheadDays: 0 }` is the
- *  cheap ongoing-only live path; omit for the ±14/+3-day wide sweep. */
+/** Re-ingest the probed events and merge; report only real changes. The probe's
+ *  matches body is REUSED for the build (no double fetch), and the existing
+ *  modifiedOn/match-count comparison stays as the change backstop. A token is
+ *  only returned once its event built, so a failed fetch gets retried. */
 export async function fetchDeltas(
   season: number,
   current: RawEvent[],
-  opts: { lookbackDays?: number; lookaheadDays?: number; window?: string[] } = {},
-  freshness: Record<string, string> = {},
+  probes: ProbeResult,
+  deadline: number,
 ): Promise<DeltaResult> {
-  const byCode = new Map(current.map((e) => [e.code, e]));
-  const window =
-    opts.window ?? (await fetchActiveWindow(season, opts.lookbackDays, opts.lookaheadDays));
-
-  const events = [...current];
-  const newEvents: string[] = [];
-  const updatedEvents: string[] = [];
-  const tokens: { path: string; lastModified: string }[] = [];
-  let newMatches = 0;
-  let skipped304 = 0;
-
-  for (const code of window) {
-    let fresh: RawEvent | null = null;
+  const built: { code: string; fresh: RawEvent; lastModified: string | null }[] = [];
+  await pool(probes.updates, deadline, async ({ code, matches, lastModified }) => {
     try {
-      const path = `${season}/matches/${code}`;
-      const probe = await firstGetConditional<{ matches: FirstMatch[] }>(
-        path,
-        freshness[`matches/${code}`],
-      );
-      if (probe.notModified) {
-        skipped304++;
-        continue;
-      }
-      if (!probe.data) continue; // 404 — no matches posted yet
-      if (probe.lastModified) tokens.push({ path: `matches/${code}`, lastModified: probe.lastModified });
-
       const [detailR, qs, ps, teamInfo] = await Promise.all([
         getEventDetail(season, code),
         getScores(season, code, "qual"),
@@ -302,13 +353,24 @@ export async function fetchDeltas(
         fetchEventTeams(season, code),
       ]);
       const detail = detailR?.events?.[0];
-      if (!detail) continue;
+      if (!detail) return;
       const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
-      fresh = buildRawEvent(detail, probe.data.matches ?? [], scores, teamInfo);
+      built.push({ code, fresh: buildRawEvent(detail, matches, scores, teamInfo), lastModified });
     } catch {
-      continue;
+      /* no token recorded, so the next sync retries it */
     }
-    if (!fresh || !fresh.matches.length) continue;
+  });
+
+  const byCode = new Map(current.map((e) => [e.code, e]));
+  const events = [...current];
+  const newEvents: string[] = [];
+  const updatedEvents: string[] = [];
+  const tokens = [...probes.tokens];
+  let newMatches = 0;
+
+  for (const { code, fresh, lastModified } of built) {
+    if (lastModified) tokens.push({ path: `matches/${code}`, lastModified });
+    if (!fresh.matches.length) continue;
     const old = byCode.get(code);
     const oldKeys = new Set((old?.matches ?? []).map(natKey));
     const added = fresh.matches.filter((m) => !oldKeys.has(natKey(m))).length;
@@ -335,8 +397,6 @@ export async function fetchDeltas(
     newEvents,
     updatedEvents,
     newMatches,
-    windowSize: window.length,
-    skipped304,
     tokens,
   };
 }

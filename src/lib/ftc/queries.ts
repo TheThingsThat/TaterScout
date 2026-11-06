@@ -257,7 +257,12 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   for (const m of [...(qualHybR?.schedule ?? []), ...(poHybR?.schedule ?? [])]) {
     if (m.tournamentLevel === "PRACTICE") continue;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
-    const played = !!m.postResultTime || !!(sc?.red && sc?.blue);
+    // Totals come from the hybrid row, so the match only counts as played once
+    // that row has its finals (its cache can lag the scores endpoint's).
+    const played =
+      (!!m.postResultTime || !!(sc?.red && sc?.blue)) &&
+      m.scoreRedFinal != null &&
+      m.scoreBlueFinal != null;
     const teams: MatchTeam[] = m.teams.map((t) => {
       if (t.teamName && !names.has(t.teamNumber)) names.set(t.teamNumber, t.teamName);
       return {
@@ -269,10 +274,12 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
         onField: t.onField,
       };
     });
-    // No-penalty totals from the score breakdown when we have it, else the
-    // hybrid's final-minus-foul.
-    const redNp = sc?.red ? sc.red.autoPoints + sc.red.teleopPoints : (m.scoreRedFinal ?? 0) - (m.scoreRedFoul ?? 0);
-    const blueNp = sc?.blue ? sc.blue.autoPoints + sc.blue.teleopPoints : (m.scoreBlueFinal ?? 0) - (m.scoreBlueFoul ?? 0);
+    // Totals come from the hybrid row, not the score breakdown — FIRST serves
+    // the breakdown zeroed until a new season's score model ships (see crawl.ts).
+    // `score{X}Foul` is what X committed, so X's no-penalty score subtracts the
+    // OPPONENT's foul.
+    const redNp = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0);
+    const blueNp = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0);
     matches.push({
       matchNum: m.matchNumber,
       tournamentLevel: levelOf(m.tournamentLevel),
@@ -285,14 +292,14 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
       scores: played
         ? {
             red: {
-              totalPoints: sc?.red?.totalPoints ?? m.scoreRedFinal ?? 0,
+              totalPoints: m.scoreRedFinal ?? 0,
               totalPointsNp: redNp,
-              autoPoints: sc?.red?.autoPoints ?? m.scoreRedAuto,
+              autoPoints: m.scoreRedAuto,
             },
             blue: {
-              totalPoints: sc?.blue?.totalPoints ?? m.scoreBlueFinal ?? 0,
+              totalPoints: m.scoreBlueFinal ?? 0,
               totalPointsNp: blueNp,
-              autoPoints: sc?.blue?.autoPoints ?? m.scoreBlueAuto,
+              autoPoints: m.scoreBlueAuto,
             },
           }
         : null,

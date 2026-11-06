@@ -31,6 +31,10 @@ export function isKnownSeason(season: number): boolean {
   return Object.prototype.hasOwnProperty.call(SEASON_NAMES, season);
 }
 
+export function pastSeasons(): number[] {
+  return Object.keys(SEASON_NAMES).map(Number).filter((s) => s < CURRENT_SEASON);
+}
+
 /** Parse untrusted season input, falling back to the current season. */
 export function parseSeasonParam(raw: string | number | null | undefined): number {
   const n = Number(raw);

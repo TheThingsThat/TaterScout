@@ -16,7 +16,7 @@ export interface RawMatch {
   rt: number; // red auto, red teleop (no-penalty)
   ba: number;
   bt: number;
-  rrp: number[]; // red bonus RPs [movement, goal, pattern]
+  rrp: number[]; // red bonus RPs, positional (crawl.ts rpFlags)
   brp: number[]; // blue bonus RPs
 }
 

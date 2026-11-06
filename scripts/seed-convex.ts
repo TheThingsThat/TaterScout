@@ -27,6 +27,10 @@ const SEASON = Number(process.argv[2]) || CURRENT_SEASON;
 // first one's state and write almost nothing. --full ignores it and writes every
 // row, which is what a fresh deployment needs.
 const FULL = process.argv.includes("--full");
+// The seed refuses to replace a deployment's worker state with an OLDER local
+// crawl (that would roll back every update the worker synced since). --force
+// overrides; normally run build-epa.ts --refetch instead.
+const FORCE = process.argv.includes("--force");
 
 // Minimal .env.local loader (tsx scripts don't get Next's env handling).
 function loadEnvLocal(): void {
@@ -58,6 +62,16 @@ async function main() {
   // Previous fingerprints come from the worker state (local cache first, then
   // the target's Convex file storage).
   const prevState = await loadWorkerState(SEASON, { target });
+  const deployed = await target.client.query(api.sync.state.workerStateUrl, {
+    secret: target.secret,
+    season: SEASON,
+  });
+  if (deployed && prevState && prevState.savedAt < deployed.savedAt && !FORCE) {
+    console.error(
+      `[seed-convex] the deployment's worker state (${new Date(deployed.savedAt).toISOString()}) is newer than your local crawl (${new Date(prevState.savedAt).toISOString()}). Run scripts/build-epa.ts ${SEASON} --refetch first, or pass --force.`,
+    );
+    process.exit(1);
+  }
   const prevFp = FULL ? null : (prevState?.fingerprints ?? null);
   const diff = diffFingerprints(fingerprints, prevFp, "full");
   console.log(
@@ -83,12 +97,26 @@ async function main() {
   // Upload worker state (raw events + these fingerprints) to the TARGET's
   // Convex file storage — this is what lets the deployment's own sync worker
   // bootstrap. Skipped when there's no raw crawl locally (run build-epa first).
-  if ((prevState?.events.length ?? 0) > 0) {
+  if (deployed && prevState && prevState.savedAt === deployed.savedAt && !changed) {
+    console.log("[seed-convex] done: nothing to write, and the deployment already has this worker state.");
+  } else if ((prevState?.events.length ?? 0) > 0) {
     await saveWorkerState(
       SEASON,
       { savedAt: Date.now(), events: prevState!.events, fingerprints },
       target,
     );
+    // Tokens were recorded against the state just replaced; drop them so the
+    // worker re-reads every event once instead of trusting them.
+    let cleared = 0;
+    for (;;) {
+      const n: number = await target.client.mutation(api.sync.state.clearFreshness, {
+        secret: target.secret,
+        season: SEASON,
+      });
+      cleared += n;
+      if (n === 0) break;
+    }
+    console.log(`[seed-convex] cleared ${cleared} freshness tokens`);
     console.log(
       `[seed-convex] done: ${wrote.calls} mutation calls (${wrote.teams} teams, ${wrote.trajectories} traj, ${wrote.eventStats} eventStats, ${wrote.events} events); worker state uploaded (${prevState!.events.length} raw events)`,
     );
