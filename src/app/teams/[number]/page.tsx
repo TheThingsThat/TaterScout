@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getTeam, getEventMatches, getSeasonRecord } from "@/lib/ftc/queries";
+import { getTeam, getEventMatches, getTeamEventRank, recordOf } from "@/lib/ftc/queries";
 import { CURRENT_SEASON, seasonFull, seasonLabel, parseSeasonParam } from "@/lib/season";
-import { eventTypeLabel, formatAward } from "@/lib/ftc/labels";
-import { formatDate, locationStr } from "@/lib/format";
+import { formatAward } from "@/lib/ftc/labels";
+import { locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
+import { getEventStats } from "@/lib/eventStats";
 import { getTrajectory } from "@/lib/trajectory";
-import type { QuickStats } from "@/lib/ftc/types";
+import type { Match, QuickStats, TeamEventLite } from "@/lib/ftc/types";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
@@ -15,6 +16,8 @@ import EpaTiles from "@/components/EpaTiles";
 import TrajectoryChart from "@/components/TrajectoryChart";
 import LiveRefresh from "@/components/LiveRefresh";
 import LocalClock from "@/components/LocalClock";
+import TeamEventCard from "@/components/TeamEventCard";
+import { matchKey } from "@/components/MatchList";
 
 interface NextMatch {
   label: string;
@@ -24,47 +27,50 @@ interface NextMatch {
   eventCode: string;
 }
 
-async function findNextMatch(
+/** Predicted start times for the unplayed quals at each ongoing event. */
+async function predictOngoing(
   season: number,
-  num: number,
-  ongoingEventCodes: { code: string; name: string; type: string; timezone: string }[],
-): Promise<NextMatch | null> {
-  // Cycle priors hoisted out of the loop: one cached lookup per event TYPE,
-  // resolved alongside the schedules instead of serially inside the loop.
-  const types = [...new Set(ongoingEventCodes.map((e) => e.type))];
-  const [results, priors] = await Promise.all([
-    Promise.all(
-      ongoingEventCodes.map((e) =>
-        getEventMatches(season, e.code, e.timezone).catch(() => null),
-      ),
-    ),
-    Promise.all(types.map((t) => getSeasonCyclePrior(season, t))),
-  ]);
+  ongoing: { event: TeamEventLite["event"]; matches: Match[] }[],
+): Promise<Map<string, Map<string, number>>> {
+  // Cycle priors hoisted out of the loop: one cached lookup per event TYPE.
+  const types = [...new Set(ongoing.map((e) => e.event.type))];
+  const priors = await Promise.all(types.map((t) => getSeasonCyclePrior(season, t)));
   const priorByType = new Map(types.map((t, i) => [t, priors[i]]));
-  let best: NextMatch | null = null;
-  for (let i = 0; i < results.length; i++) {
-    const res = results[i];
-    if (!res) continue;
-    const ev = ongoingEventCodes[i];
-    const quals = res.matches.filter((m) => m.tournamentLevel === "Quals");
-    const sched: SchedMatch[] = quals.map((m) => ({
-      key: `${m.tournamentLevel}-${m.series}-${m.matchNum}`,
-      scheduled: m.scheduledStartTime ? Date.parse(m.scheduledStartTime) : null,
-      actual: m.actualStartTime ? Date.parse(m.actualStartTime) : null,
-      played: m.hasBeenPlayed,
-    }));
+  const out = new Map<string, Map<string, number>>();
+  for (const { event, matches } of ongoing) {
+    const sched: SchedMatch[] = matches
+      .filter((m) => m.tournamentLevel === "Quals")
+      .map((m) => ({
+        key: matchKey(m),
+        scheduled: m.scheduledStartTime ? Date.parse(m.scheduledStartTime) : null,
+        actual: m.actualStartTime ? Date.parse(m.actualStartTime) : null,
+        played: m.hasBeenPlayed,
+      }));
     const { predicted } = predictMatchTimes(sched, {
       ...FTC_DEFAULTS,
-      seasonPriorSec: priorByType.get(ev.type)!,
+      seasonPriorSec: priorByType.get(event.type)!,
     });
-    const mine = quals
+    out.set(event.code, predicted);
+  }
+  return out;
+}
+
+function findNextMatch(
+  num: number,
+  ongoing: { event: TeamEventLite["event"]; matches: Match[] }[],
+  predictions: Map<string, Map<string, number>>,
+): NextMatch | null {
+  let best: NextMatch | null = null;
+  for (const { event, matches } of ongoing) {
+    const predicted = predictions.get(event.code);
+    const mine = matches
       .filter(
-        (m) => !m.hasBeenPlayed && m.teams.some((t) => t.teamNumber === num),
+        (m) =>
+          m.tournamentLevel === "Quals" &&
+          !m.hasBeenPlayed &&
+          m.teams.some((t) => t.teamNumber === num),
       )
-      .map((m) => ({
-        m,
-        t: predicted.get(`${m.tournamentLevel}-${m.series}-${m.matchNum}`) ?? null,
-      }))
+      .map((m) => ({ m, t: predicted?.get(matchKey(m)) ?? null }))
       .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
     if (mine.length) {
       const top = mine[0];
@@ -72,9 +78,9 @@ async function findNextMatch(
         best = {
           label: `Q${top.m.matchNum}`,
           time: top.t,
-          timezone: res.timezone,
-          eventName: ev.name,
-          eventCode: ev.code,
+          timezone: event.timezone,
+          eventName: event.name,
+          eventCode: event.code,
         };
       }
     }
@@ -141,30 +147,45 @@ export default async function TeamPage({ params, searchParams }: Props) {
         }
       : null;
 
-  // Live: predicted next match at any ongoing event this team is registered for.
-  const ongoing = team.events
-    .filter((e) => e.event.ongoing)
-    .map((e) => ({
-      code: e.eventCode,
-      name: e.event.name,
-      type: e.event.type,
-      timezone: e.event.timezone,
-    }));
-  // Season record across every match played this season — quals and playoffs.
-  // Independent of the next-match lookup; the underlying schedule fetches for
-  // ongoing events dedupe through the request-scoped FIRST memo.
-  const [nextMatch, record] = await Promise.all([
-    ongoing.length ? findNextMatch(season, num, ongoing) : null,
-    getSeasonRecord(
-      season,
-      num,
-      team.events.map((e) => ({ code: e.eventCode, timezone: e.event.timezone })),
-    ),
-  ]);
-  const recordGames = record.wins + record.losses + record.ties;
+  // Chronological, most recent first. Everything FIRST knows about the team at each
+  // event; these fetches are shared with the event pages' caches.
+  const events = await Promise.all(
+    [...team.events]
+      .sort((a, b) => b.event.start.localeCompare(a.event.start))
+      .map(async ({ event }) => {
+        const matches = await getEventMatches(season, event.code, event.timezone, event.end).catch(
+          () => [] as Match[],
+        );
+        const mine = matches.filter((m) => m.teams.some((t) => t.teamNumber === num));
+        // Until the team has played here, FIRST's rank is just its default ordering (or,
+        // at a League Meet, standing from earlier meets) and no stats row exists.
+        const played = mine.some((m) => m.hasBeenPlayed);
+        const [rank, stats] = played
+          ? await Promise.all([
+              getTeamEventRank(season, event.code, num, event.timezone, event.end).catch(() => null),
+              getEventStats(season, event.code, event.end),
+            ])
+          : [null, null];
+        return { event, matches, mine, rank, stat: stats?.get(num) ?? null, record: recordOf(mine, num) };
+      }),
+  );
 
-  // Chronological, most recent first.
-  const events = [...team.events].sort((a, b) => b.event.start.localeCompare(a.event.start));
+  // Live: predicted next match at any ongoing event this team is registered for.
+  const ongoing = events.filter((e) => e.event.ongoing);
+  const predictions = await predictOngoing(season, ongoing);
+  const nextMatch = findNextMatch(num, ongoing, predictions);
+
+  // Season record across every match played this season — quals and playoffs.
+  const record = events.reduce(
+    (sum, e) => ({
+      wins: sum.wins + e.record.wins,
+      losses: sum.losses + e.record.losses,
+      ties: sum.ties + e.record.ties,
+    }),
+    { wins: 0, losses: 0, ties: 0 },
+  );
+  const recordGames = record.wins + record.losses + record.ties;
+  const latestPlayed = events.findIndex((e) => e.mine.some((m) => m.hasBeenPlayed));
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
@@ -310,29 +331,20 @@ export default async function TeamPage({ params, searchParams }: Props) {
             No events in {seasonLabel(season)}.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
-            {events.map((e) => (
-              <Link
-                key={e.eventCode}
-                href={`/events/${season}/${e.eventCode}`}
-                className="flex items-center justify-between gap-4 border-t border-[#141414] px-5 py-[15px] no-underline transition-colors first:border-t-0 hover:bg-[#101010]"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-[#e7eaf0]">{e.event.name}</div>
-                  <div className="truncate text-[12px] text-[#6b6f78]">
-                    {locationStr(e.event.location)}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-3.5">
-                  <span className="rounded-[7px] bg-[#161616] px-[9px] py-[3px] font-mono text-[11px] text-muted">
-                    {eventTypeLabel(e.event.type)}
-                  </span>
-                  <span className="hidden text-[12px] text-[#6b6f78] sm:block">
-                    {formatDate(e.event.start)}
-                  </span>
-                  <span className="text-[#6b6f78]">→</span>
-                </div>
-              </Link>
+          <div className="space-y-3.5">
+            {events.map((e, i) => (
+              <TeamEventCard
+                key={e.event.code}
+                season={season}
+                teamNumber={num}
+                event={e.event}
+                matches={e.mine}
+                predictions={predictions.get(e.event.code)}
+                rank={e.rank}
+                stat={e.stat}
+                record={e.record}
+                defaultOpen={e.event.ongoing || i === latestPlayed}
+              />
             ))}
           </div>
         )}

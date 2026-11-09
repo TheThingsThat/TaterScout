@@ -143,7 +143,9 @@ export function invalidateKeys(
     eventStats: { ...fp.eventStats },
     events: { ...fp.events },
   };
-  for (const k of diff.teams) delete out.teams[k];
+  // A placeholder rather than a delete: a stats retry keeps an existing row's `full`
+  // hash, so this makes the daily reconcile rewrite ranks the failed push may have lost.
+  for (const k of diff.teams) out.teams[k] = { stats: "", full: "" };
   for (const k of diff.trajectories) delete out.trajectories[k];
   for (const k of diff.eventStats) delete out.eventStats[k];
   for (const k of diff.events) delete out.events[k];

@@ -15,14 +15,30 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   DemoExhibition: "Demo / Exhibition",
   Other: "Event",
   Premier: "Premier",
+  NonAdvancement: "Non-Advancement",
+  Pilot: "Pilot",
+  PracticeDay: "Practice Day",
+  VolunteerSignup: "Volunteer Signup",
 };
+
+/** Event types where no matches are played; the events index leaves them out by default. */
+export const NON_COMPETITION_TYPES = new Set([
+  "Kickoff",
+  "Workshop",
+  "DemoExhibition",
+  "PracticeDay",
+  "VolunteerSignup",
+]);
 
 /** FIRST gives a spaced `typeName` ("FIRST Championship", "League Meet"); the
  *  label/weight maps below key on the compact PascalCase form. Strip separators
  *  so "FIRST Championship" → "FIRSTChampionship", "League Meet" → "LeagueMeet". */
-export function normalizeEventType(typeName: string | null | undefined): string {
+export function normalizeEventType(typeName: string | null | undefined, season: number): string {
   if (!typeName) return "Other";
   const key = typeName.replace(/[^a-zA-Z0-9]/g, "");
+  // FIRST retroactively renamed past seasons' Scrimmages; ratings data from those
+  // seasons (cycle priors by type) still uses the old name.
+  if (key === "NonAdvancement" && season <= 2025) return "Scrimmage";
   return key || "Other";
 }
 

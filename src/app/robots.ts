@@ -19,8 +19,8 @@ const AI_BOTS = [
 
 /** Public stats pages are the point of the site, so let crawlers in — but keep
  *  them out of the scouting app (private, auth-gated), the API routes (which cost
- *  credentialed FIRST calls per request), the thousands of sorted and paged
- *  /rankings URLs, and past seasons. Only polite bots honor this; the rest need
+ *  credentialed FIRST calls per request), the thousands of sorted, filtered and
+ *  paged /rankings and /events URLs, and past seasons. Only polite bots honor this; the rest need
  *  Vercel's firewall. Don't block `?season=*`: it also matches current-season links. */
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -33,6 +33,7 @@ export default function robots(): MetadataRoute.Robots {
           "/scout/",
           "/api/",
           "/rankings?",
+          "/events?",
           ...pastSeasons().flatMap((s) => [`/events/${s}/`, `/teams/*?season=${s}`]),
         ],
       },

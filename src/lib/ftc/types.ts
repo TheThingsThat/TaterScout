@@ -33,6 +33,7 @@ export interface TeamEventLite {
     name: string;
     code: string;
     start: string;
+    end: string;
     type: string;
     ongoing: boolean;
     timezone: string;
@@ -69,6 +70,13 @@ export interface EventSearchResult {
   location: Location;
 }
 
+/** A row of the /events index. `status` is judged on the venue's own calendar. */
+export interface EventIndexRow extends EventSearchResult {
+  end: string;
+  regionCode: string | null;
+  status: "today" | "upcoming" | "finished";
+}
+
 export interface AllianceSide {
   totalPoints: number | null;
   totalPointsNp: number | null;
@@ -86,7 +94,33 @@ export interface MatchTeam {
   station: string;
   allianceRole: string | null;
   surrogate: boolean;
+  dq: boolean;
   onField: boolean;
+}
+
+export interface BreakdownLine {
+  label: string;
+  red: number;
+  blue: number;
+  redNote: string | null; // e.g. "2 tips"
+  blueNote: string | null;
+}
+
+/** One match's scoring detail (see ftc/breakdown.ts). `rp` is empty for playoffs. */
+export interface MatchBreakdown {
+  autoRed: number;
+  autoBlue: number;
+  auto: BreakdownLine[];
+  teleopRed: number;
+  teleopBlue: number;
+  teleop: BreakdownLine[];
+  foulPointsRed: number; // penalty points awarded TO this alliance
+  foulPointsBlue: number;
+  foulsRed: string; // "major / minor" committed BY this alliance
+  foulsBlue: string;
+  rp: { label: string; red: boolean; blue: boolean }[];
+  rpTotalRed: number;
+  rpTotalBlue: number;
 }
 
 export interface Match {
@@ -94,11 +128,12 @@ export interface Match {
   tournamentLevel: string; // "Quals" | "DoubleElim" | "Finals" | ...
   series: number;
   hasBeenPlayed: boolean;
-  scheduledStartTime: string | null;
+  scheduledStartTime: string | null; // ISO instants, converted from venue time
   actualStartTime: string | null;
   postResultTime: string | null;
   teams: MatchTeam[];
   scores: MatchScores | null;
+  breakdown: MatchBreakdown | null;
 }
 
 /** Per-event OPR (no-penalty, quals-only). Computed by us; may be null on the

@@ -3,11 +3,15 @@
 // precomputed store (FIRST has no season-OPR or fuzzy-search endpoints).
 import { firstGet } from "./first";
 import { levelOf, normalizeEventType } from "./labels";
+import { isAllianceMatch, isScored, teamsOnField, venueTimeIso, venueTimeMs, venueToday } from "./match";
+import { buildBreakdown, type ScoreRow } from "./breakdown";
 import { siteMeta, siteSearch } from "../data/convexSite";
+import { CURRENT_SEASON, isValidEventCode } from "../season";
 import type {
   Team,
   TeamSearchResult,
   EventSearchResult,
+  EventIndexRow,
   EventDetail,
   EventTeam,
   EventAward,
@@ -28,6 +32,7 @@ interface FEvent {
   city: string | null;
   stateprov: string | null;
   country: string | null;
+  regionCode: string | null;
   website: string | null;
   liveStreamUrl: string | null;
   timezone: string | null;
@@ -50,9 +55,11 @@ interface FTeam {
 // in where available. This is what surfaces UPCOMING matches; /matches is
 // results-only, so it omits them.
 interface FHybridTeam {
-  teamNumber: number;
+  teamNumber: number | null; // null until a playoff slot is decided
   station: string;
   onField: boolean;
+  surrogate?: boolean;
+  dq?: boolean;
   teamName: string | null;
 }
 interface FHybridMatch {
@@ -70,22 +77,17 @@ interface FHybridMatch {
   scoreBlueAuto: number | null;
   teams: FHybridTeam[];
 }
-interface FScoreAlliance {
-  alliance: "Red" | "Blue";
-  autoPoints: number;
-  teleopPoints: number;
-  totalPoints: number;
-}
 interface FMatchScore {
   matchLevel: string;
   matchSeries: number;
   matchNumber: number;
-  alliances: FScoreAlliance[];
+  alliances?: ScoreRow[]; // absent on remote events' rows
 }
 interface FRanking {
   rank: number;
   teamNumber: number;
   teamName: string | null;
+  sortOrder1: number | null; // ranking score
 }
 interface FAllianceTeam {
   teamNumber: number;
@@ -106,13 +108,15 @@ interface FAward {
 }
 
 const REVALIDATE = 60; // seconds for live page fetches
+const SETTLED_REVALIDATE = 86400;
+const SETTLED_AFTER_MS = 14 * 86400000; // past the longest sync sweep window
 
 const now = () => Date.now();
-const parse = (s: string | null | undefined) => (s ? Date.parse(s) : NaN);
+const parse = (s: string | null | undefined, tz: string | null) => venueTimeMs(s, tz) ?? NaN;
 /** An event is "ongoing" from its start date through the day after it ends. */
-function isOngoing(start: string | null, end: string | null): boolean {
-  const s = parse(start);
-  const e = parse(end ?? start) + 86400000;
+function isOngoing(start: string | null, end: string | null, tz: string | null): boolean {
+  const s = parse(start, tz);
+  const e = parse(end ?? start, tz) + 86400000;
   const t = now();
   return !Number.isNaN(s) && t >= s && t <= e;
 }
@@ -148,8 +152,9 @@ export async function getTeam(number: number, season: number): Promise<Team | nu
       name: e.name ?? e.code,
       code: e.code,
       start: e.dateStart ?? "",
-      type: normalizeEventType(e.typeName),
-      ongoing: isOngoing(e.dateStart, e.dateEnd),
+      end: e.dateEnd ?? e.dateStart ?? "",
+      type: normalizeEventType(e.typeName, season),
+      ongoing: isOngoing(e.dateStart, e.dateEnd, e.timezone),
       timezone: e.timezone ?? "UTC",
       location: { city: e.city, state: e.stateprov, country: e.country },
     },
@@ -225,28 +230,30 @@ async function isRealEventCode(season: number, code: string): Promise<boolean> {
   }
 }
 
-export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
-  if (!(await isRealEventCode(season, code))) return null;
-  const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
-    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
-    firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: REVALIDATE }),
-    firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: REVALIDATE }),
-    firstGet<{ rankings: FRanking[] }>(`${season}/rankings/${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: REVALIDATE }),
-    fetchEventTeamNames(season, code),
-  ]);
-  const d = detailR?.events?.[0];
-  if (!d) return null;
+/** A fetch that may fail without taking the rest of the page with it: some events
+ *  answer 403 or 500 on /scores and /rankings while their schedule is fine. */
+const optional = <T,>(p: Promise<T | null>): Promise<T | null> => p.catch(() => null);
 
-  // Scores keyed by level|series|number.
-  const scoreByKey = new Map<string, { red?: FScoreAlliance; blue?: FScoreAlliance }>();
-  for (const s of [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])]) {
+const getEventRankings = (season: number, code: string, revalidate = REVALIDATE) =>
+  firstGet<{ rankings: FRanking[] }>(`${season}/rankings/${code}`, { revalidate });
+
+/** How long the team page may cache one event's data. A team has several events, and
+ *  the ones that ended long ago won't change. */
+const teamPageRevalidate = (season: number, eventEnd: string, tz: string): number =>
+  season < CURRENT_SEASON || now() - parse(eventEnd, tz) > SETTLED_AFTER_MS ? SETTLED_REVALIDATE : REVALIDATE;
+
+/** Join an event's hybrid schedule rows with its /scores rows into Match[]. */
+function buildMatches(
+  season: number,
+  timezone: string | null,
+  schedule: FHybridMatch[],
+  scores: FMatchScore[],
+): Match[] {
+  const scoreByKey = new Map<string, { red?: ScoreRow; blue?: ScoreRow }>();
+  for (const s of scores) {
     const key = `${s.matchLevel}|${s.matchSeries}|${s.matchNumber}`;
     const e = scoreByKey.get(key) ?? {};
-    for (const a of s.alliances) {
+    for (const a of s.alliances ?? []) {
       if (a.alliance === "Red") e.red = a;
       else e.blue = a;
     }
@@ -254,40 +261,44 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   }
 
   const matches: Match[] = [];
-  for (const m of [...(qualHybR?.schedule ?? []), ...(poHybR?.schedule ?? [])]) {
-    if (m.tournamentLevel === "PRACTICE") continue;
+  for (const m of schedule) {
+    if (m.tournamentLevel === "PRACTICE" || !isAllianceMatch(m.teams)) continue;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
-    // Totals come from the hybrid row, so the match only counts as played once
-    // that row has its finals (its cache can lag the scores endpoint's).
-    const played =
-      (!!m.postResultTime || !!(sc?.red && sc?.blue)) &&
-      m.scoreRedFinal != null &&
-      m.scoreBlueFinal != null;
-    const teams: MatchTeam[] = m.teams.map((t) => {
-      if (t.teamName && !names.has(t.teamNumber)) names.set(t.teamNumber, t.teamName);
-      return {
-        teamNumber: t.teamNumber,
-        alliance: t.station.startsWith("Red") ? "Red" : "Blue",
-        station: t.station,
-        allianceRole: null,
-        surrogate: false,
-        onField: t.onField,
-      };
-    });
+    const played = isScored(m.scoreRedFinal, m.scoreBlueFinal);
+    const onField = new Set([
+      ...teamsOnField(m.teams, "Red", m),
+      ...teamsOnField(m.teams, "Blue", m),
+    ]);
+    const teams: MatchTeam[] = m.teams.flatMap((t) =>
+      t.teamNumber == null
+        ? []
+        : [
+            {
+              teamNumber: t.teamNumber,
+              alliance: t.station.startsWith("Red") ? ("Red" as const) : ("Blue" as const),
+              station: t.station,
+              allianceRole: null,
+              surrogate: t.surrogate === true,
+              dq: t.dq === true,
+              onField: onField.has(t),
+            },
+          ],
+    );
     // Totals come from the hybrid row, not the score breakdown — FIRST serves
     // the breakdown zeroed until a new season's score model ships (see crawl.ts).
     // `score{X}Foul` is what X committed, so X's no-penalty score subtracts the
     // OPPONENT's foul.
     const redNp = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0);
     const blueNp = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0);
+    const level = levelOf(m.tournamentLevel);
     matches.push({
       matchNum: m.matchNumber,
-      tournamentLevel: levelOf(m.tournamentLevel),
+      tournamentLevel: level,
       series: m.series,
       hasBeenPlayed: played,
-      scheduledStartTime: m.startTime,
-      actualStartTime: m.actualStartTime,
-      postResultTime: m.postResultTime,
+      scheduledStartTime: venueTimeIso(m.startTime, timezone),
+      actualStartTime: venueTimeIso(m.actualStartTime, timezone),
+      postResultTime: venueTimeIso(m.postResultTime, timezone),
       teams,
       scores: played
         ? {
@@ -303,8 +314,38 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
             },
           }
         : null,
+      breakdown: played
+        ? buildBreakdown(season, level === "Quals", sc?.red, sc?.blue, m.scoreRedFinal, m.scoreBlueFinal)
+        : null,
     });
   }
+  return matches;
+}
+
+export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
+  if (!(await isRealEventCode(season, code))) return null;
+  const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
+    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: REVALIDATE })),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: REVALIDATE })),
+    optional(getEventRankings(season, code)),
+    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: REVALIDATE }),
+    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: REVALIDATE }),
+    fetchEventTeamNames(season, code),
+  ]);
+  const d = detailR?.events?.[0];
+  if (!d) return null;
+
+  const schedule = [...(qualHybR?.schedule ?? []), ...(poHybR?.schedule ?? [])];
+  for (const m of schedule)
+    for (const t of m.teams)
+      if (t.teamNumber != null && t.teamName && !names.has(t.teamNumber)) names.set(t.teamNumber, t.teamName);
+  const matches = buildMatches(season, d.timezone, schedule, [
+    ...(qs?.matchScores ?? []),
+    ...(ps?.matchScores ?? []),
+  ]);
 
   // Rank + roster → EventTeam list.
   const rankOf = new Map<number, number>();
@@ -332,8 +373,10 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   });
 
   const t = now();
-  const started = !Number.isNaN(parse(d.dateStart)) && t >= parse(d.dateStart);
-  const finished = !Number.isNaN(parse(d.dateEnd ?? d.dateStart)) && t > parse(d.dateEnd ?? d.dateStart) + 86400000;
+  const startMs = parse(d.dateStart, d.timezone);
+  const endMs = parse(d.dateEnd ?? d.dateStart, d.timezone);
+  const started = !Number.isNaN(startMs) && t >= startMs;
+  const finished = !Number.isNaN(endMs) && t > endMs + 86400000;
 
   return {
     code: d.code,
@@ -341,9 +384,9 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
     name: d.name ?? d.code,
     start: d.dateStart ?? "",
     end: d.dateEnd ?? d.dateStart ?? "",
-    type: normalizeEventType(d.typeName),
+    type: normalizeEventType(d.typeName, season),
     remote: d.remote,
-    ongoing: isOngoing(d.dateStart, d.dateEnd),
+    ongoing: isOngoing(d.dateStart, d.dateEnd, d.timezone),
     started,
     finished,
     timezone: d.timezone ?? "UTC",
@@ -359,101 +402,67 @@ export async function getEvent(season: number, code: string): Promise<EventDetai
   };
 }
 
-/** Lightweight match list for an event (times + team numbers + final scores) —
- *  team-page use (next-match lookup and season W-L-T). */
-export interface EventMatchLite {
-  timezone: string;
-  matches: {
-    matchNum: number;
-    tournamentLevel: string;
-    series: number;
-    hasBeenPlayed: boolean;
-    scheduledStartTime: string | null;
-    actualStartTime: string | null;
-    redFinal: number | null;
-    blueFinal: number | null;
-    teams: { teamNumber: number; alliance: "Red" | "Blue" }[];
-  }[];
-}
-
+/** One event's matches for the team page (quals + playoffs). Playoffs are absent
+ *  until alliance selection, hence the tolerated nulls. */
 export async function getEventMatches(
   season: number,
   code: string,
-  knownTimezone?: string | null,
-): Promise<EventMatchLite | null> {
-  // Hybrid schedules: qual so the "next match" lookup sees UPCOMING (unplayed)
-  // quals, playoff so the season record counts elim matches too. Playoff is
-  // absent until alliance selection, hence the tolerated null. Callers that
-  // already know the event's timezone (getTeam returns it) pass it to skip the
-  // detail fetch — one fewer FIRST call per event.
-  const [detailR, qualHybR, playoffHybR] = await Promise.all([
-    knownTimezone == null
-      ? firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE })
-      : null,
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
+  timezone: string,
+  eventEnd: string,
+): Promise<Match[]> {
+  const revalidate = teamPageRevalidate(season, eventEnd, timezone);
+  const [qualHybR, playoffHybR, qs, ps] = await Promise.all([
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate }),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate })),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate })),
   ]);
-  const timezone = knownTimezone ?? detailR?.events?.[0]?.timezone;
-  if (knownTimezone == null && !detailR?.events?.[0]) return null;
-  return {
-    timezone: timezone || "UTC",
-    matches: [...(qualHybR?.schedule ?? []), ...(playoffHybR?.schedule ?? [])]
-      .filter((m) => m.tournamentLevel !== "PRACTICE")
-      .map((m) => ({
-        matchNum: m.matchNumber,
-        tournamentLevel: levelOf(m.tournamentLevel),
-        series: m.series,
-        // A posted score without postResultTime still means played — the event
-        // page already treats it that way; diverging here made getSeasonRecord
-        // drop such matches and let findNextMatch advertise them as upcoming.
-        hasBeenPlayed:
-          !!m.postResultTime || (m.scoreRedFinal != null && m.scoreBlueFinal != null),
-        scheduledStartTime: m.startTime,
-        actualStartTime: m.actualStartTime,
-        redFinal: m.scoreRedFinal,
-        blueFinal: m.scoreBlueFinal,
-        teams: m.teams.map((t) => ({
-          teamNumber: t.teamNumber,
-          alliance: t.station.startsWith("Red") ? ("Red" as const) : ("Blue" as const),
-        })),
-      })),
-  };
+  return buildMatches(
+    season,
+    timezone,
+    [...(qualHybR?.schedule ?? []), ...(playoffHybR?.schedule ?? [])],
+    [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])],
+  );
 }
 
-export interface SeasonRecord {
+/** A team's row in an event's qualification rankings. For a League Meet, FIRST's table
+ *  is the whole league's so far, not that meet's. Null when it has no row yet. */
+export async function getTeamEventRank(
+  season: number,
+  code: string,
+  teamNumber: number,
+  timezone: string,
+  eventEnd: string,
+): Promise<{ rank: number; rankingScore: number | null } | null> {
+  const revalidate = teamPageRevalidate(season, eventEnd, timezone);
+  const r = (await getEventRankings(season, code, revalidate))?.rankings?.find((x) => x.teamNumber === teamNumber);
+  return r && r.rank > 0 ? { rank: r.rank, rankingScore: r.sortOrder1 } : null;
+}
+
+export interface WinLossRecord {
   wins: number;
   losses: number;
   ties: number;
 }
 
-/** A team's W-L-T across every match it played this season — quals AND playoffs.
- *  Uses FINAL scores (penalties included), which is what decides a match, rather
- *  than the no-penalty scores our rating store keeps. */
-export async function getSeasonRecord(
-  season: number,
-  teamNumber: number,
-  events: { code: string; timezone?: string | null }[],
-): Promise<SeasonRecord> {
-  const results = await Promise.all(
-    events.map((e) => getEventMatches(season, e.code, e.timezone).catch(() => null)),
-  );
-  let wins = 0;
-  let losses = 0;
-  let ties = 0;
-  for (const res of results) {
-    if (!res) continue;
-    for (const m of res.matches) {
-      if (!m.hasBeenPlayed || m.redFinal == null || m.blueFinal == null) continue;
-      const mine = m.teams.find((t) => t.teamNumber === teamNumber);
-      if (!mine) continue;
-      const my = mine.alliance === "Red" ? m.redFinal : m.blueFinal;
-      const opp = mine.alliance === "Red" ? m.blueFinal : m.redFinal;
-      if (my > opp) wins++;
-      else if (my < opp) losses++;
-      else ties++;
-    }
+/** A team's W-L-T over these matches. Uses FINAL scores (penalties included), which
+ *  is what decides a match, rather than the no-penalty scores our rating store keeps.
+ *  Surrogate matches don't count toward a team's record. */
+export function recordOf(matches: Match[], teamNumber: number): WinLossRecord {
+  const out: WinLossRecord = { wins: 0, losses: 0, ties: 0 };
+  for (const m of matches) {
+    const red = m.scores?.red?.totalPoints;
+    const blue = m.scores?.blue?.totalPoints;
+    if (red == null || blue == null) continue;
+    const mine = m.teams.find((t) => t.teamNumber === teamNumber);
+    if (!mine || mine.surrogate) continue;
+    const my = mine.alliance === "Red" ? red : blue;
+    const opp = mine.alliance === "Red" ? blue : red;
+    if (my > opp) out.wins++;
+    else if (my < opp) out.losses++;
+    else out.ties++;
   }
-  return { wins, losses, ties };
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -515,9 +524,33 @@ async function getSeasonEventList(season: number): Promise<EventSearchResult[]> 
     season,
     name: e.name ?? e.code,
     start: e.dateStart ?? "",
-    type: normalizeEventType(e.typeName),
+    type: normalizeEventType(e.typeName, season),
     location: { city: e.city, state: e.stateprov, country: e.country },
   }));
+}
+
+/** Every event in a season for the events index, including upcoming ones. */
+export async function getEventIndex(season: number): Promise<EventIndexRow[]> {
+  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: REVALIDATE });
+  const t = now();
+  // Old seasons have some junk codes ("63693260770.2649"), 209 of 2019's 1,130, that the
+  // event page refuses. Same check as that page, which upper-cases first.
+  return (r?.events ?? []).filter((e) => isValidEventCode(e.code.toUpperCase())).map((e) => {
+    const start = (e.dateStart ?? "").slice(0, 10);
+    const end = (e.dateEnd ?? e.dateStart ?? "").slice(0, 10);
+    const today = venueToday(e.timezone, t);
+    return {
+      code: e.code,
+      season,
+      name: e.name ?? e.code,
+      start: e.dateStart ?? "",
+      end: e.dateEnd ?? e.dateStart ?? "",
+      type: normalizeEventType(e.typeName, season),
+      regionCode: e.regionCode || null,
+      location: { city: e.city, state: e.stateprov, country: e.country },
+      status: today < start ? "upcoming" : today > end ? "finished" : "today",
+    };
+  });
 }
 
 export async function searchAll(

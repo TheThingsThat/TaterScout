@@ -4,6 +4,7 @@
 // endpoint. OPR is NOT provided by FIRST — we compute it in compute.ts.
 import { firstGet, firstGetConditional } from "../ftc/first";
 import { levelOf, normalizeEventType } from "../ftc/labels";
+import { isScored, teamsOnField, venueTimeMs } from "../ftc/match";
 import type { RawEvent, RawMatch } from "./types";
 
 const CONCURRENCY = 6;
@@ -17,6 +18,7 @@ interface FirstEvent {
   city: string | null;
   stateprov: string | null;
   country: string | null;
+  timezone: string | null;
   dateStart: string | null;
   dateEnd: string | null;
 }
@@ -45,6 +47,7 @@ interface FirstMatch {
 }
 interface FirstAllianceScore {
   alliance: "Red" | "Blue";
+  totalPoints?: number;
   // Ranking-point flags are GAME-SPECIFIC. A new season's read as undefined → 0
   // until they are added to rpFlags below.
   movementRP?: boolean; // DECODE 2025
@@ -58,7 +61,7 @@ interface FirstMatchScore {
   matchLevel: string;
   matchSeries: number;
   matchNumber: number;
-  alliances: FirstAllianceScore[];
+  alliances?: FirstAllianceScore[]; // absent on remote events' rows
 }
 interface FirstTeam {
   teamNumber: number;
@@ -114,19 +117,21 @@ async function fetchEventTeams(season: number, code: string): Promise<Map<number
   return map;
 }
 
-/** One alliance's bonus ranking points as positional 0/1 flags. */
-const rpFlags = (a?: FirstAllianceScore): number[] =>
-  [a?.movementRP ?? a?.swarmRP, a?.goalRP ?? a?.pollinator1RP, a?.patternRP ?? a?.pollinator2RP].map(
-    (earned) => (earned ? 1 : 0),
-  );
+/** One alliance's bonus ranking points as positional 0/1 flags. Empty means unknown:
+ *  no score row yet, or a zeroed one (see below) whose flags would read as all-missed. */
+const rpFlags = (a: FirstAllianceScore | undefined, allianceFinal: number | null): number[] =>
+  !a || (a.totalPoints === 0 && (allianceFinal ?? 0) > 0)
+    ? []
+    : [a.movementRP ?? a.swarmRP, a.goalRP ?? a.pollinator1RP, a.patternRP ?? a.pollinator2RP].map(
+        (earned) => (earned ? 1 : 0),
+      );
 
 const isPlayed = (m: FirstMatch): boolean =>
-  m.tournamentLevel !== "PRACTICE" &&
-  typeof m.scoreRedFinal === "number" &&
-  typeof m.scoreBlueFinal === "number";
+  m.tournamentLevel !== "PRACTICE" && isScored(m.scoreRedFinal, m.scoreBlueFinal);
 
 /** Join matches + score breakdowns into RawMatch[] (played matches only). */
 function buildRawEvent(
+  season: number,
   detail: FirstEvent,
   matches: FirstMatch[],
   scores: FirstMatchScore[],
@@ -137,7 +142,7 @@ function buildRawEvent(
   for (const s of scores) {
     const key = `${s.matchLevel}|${s.matchSeries}|${s.matchNumber}`;
     const entry = scoreByKey.get(key) ?? {};
-    for (const a of s.alliances) {
+    for (const a of s.alliances ?? []) {
       if (a.alliance === "Red") entry.red = a;
       else if (a.alliance === "Blue") entry.blue = a;
     }
@@ -161,16 +166,18 @@ function buildRawEvent(
     const ba = m.scoreBlueAuto ?? 0;
     const rt = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0) - ra;
     const bt = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0) - ba;
+    // A disqualified playoff alliance's final is zeroed with the opponent's fouls still
+    // on the row, which makes its no-penalty score negative. No usable score to rate.
+    if (rt + ra < 0 || bt + ba < 0) continue;
     const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
-    const time = Date.parse(m.actualStartTime ?? m.postResultTime ?? m.scheduledStartTime ?? "");
-    if (Number.isNaN(time)) continue;
-    // A scored match with NO team flagged on-field is an upstream artifact (a
-    // whole finished event has come back that way), not 4 no-shows: ignore the flag.
-    const flagged = m.teams.some((t) => t.onField);
-    const present = (side: string) =>
-      m.teams.filter((t) => (t.onField || !flagged) && t.station.startsWith(side)).map((t) => t.teamNumber);
-    const red = present("Red");
-    const blue = present("Blue");
+    const tz = detail.timezone;
+    const time =
+      venueTimeMs(m.actualStartTime, tz) ??
+      venueTimeMs(m.postResultTime, tz) ??
+      venueTimeMs(m.scheduledStartTime, tz);
+    if (time === null) continue;
+    const red = teamsOnField(m.teams, "Red", m).map((t) => t.teamNumber);
+    const blue = teamsOnField(m.teams, "Blue", m).map((t) => t.teamNumber);
     if (!red.length || !blue.length) continue;
     for (const t of [...red, ...blue]) teamNums.add(t);
     if (m.modifiedOn && (!updatedAt || m.modifiedOn > updatedAt)) updatedAt = m.modifiedOn;
@@ -186,8 +193,8 @@ function buildRawEvent(
       rt,
       ba,
       bt,
-      rrp: rpFlags(sc?.red),
-      brp: rpFlags(sc?.blue),
+      rrp: rpFlags(sc?.red, m.scoreRedFinal),
+      brp: rpFlags(sc?.blue, m.scoreBlueFinal),
     });
   }
 
@@ -195,7 +202,7 @@ function buildRawEvent(
     code: detail.code,
     name: detail.name,
     start: detail.dateStart,
-    type: normalizeEventType(detail.typeName),
+    type: normalizeEventType(detail.typeName, season),
     updatedAt,
     city: detail.city,
     state: detail.stateprov,
@@ -230,7 +237,7 @@ export async function fetchAllEvents(
           getScores(season, d.code, "playoff"),
         ]);
         const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
-        const ev = buildRawEvent(d, matchR?.matches ?? [], scores, teamIndex);
+        const ev = buildRawEvent(season, d, matchR?.matches ?? [], scores, teamIndex);
         if (ev.matches.length) out.push(ev);
       } catch {
         /* skip a failed event */
@@ -245,22 +252,24 @@ export async function fetchAllEvents(
 
 /** Events overlapping now ± window. `(0, 0)` = currently-ongoing events only
  *  (mirrors ftc-scout's Partial scope: start ≤ now ≤ end, counting the full end
- *  day). Larger windows also catch recently-finished / soon-starting events. */
+ *  day). Larger windows also catch recently-finished / soon-starting events.
+ *  Null when FIRST returned no list at all, which is not the same as no events. */
 export async function fetchActiveWindow(
   season: number,
   lookbackDays = 14,
   lookaheadDays = 3,
-): Promise<string[]> {
+): Promise<string[] | null> {
   const evR = await getEventsList(season);
+  if (!evR) return null;
   const now = Date.now();
   const lo = now - lookbackDays * 86400000;
   const hi = now + lookaheadDays * 86400000;
-  return (evR?.events ?? [])
+  return (evR.events ?? [])
     .filter((e) => {
-      const s = Date.parse(e.dateStart ?? "");
+      const s = venueTimeMs(e.dateStart, e.timezone);
+      const end = venueTimeMs(e.dateEnd ?? e.dateStart, e.timezone);
       // Count the whole final day: FIRST dates are midnight, so add ~1 day.
-      const en = Date.parse(e.dateEnd ?? e.dateStart ?? "") + 86400000;
-      return !Number.isNaN(s) && en >= lo && s <= hi;
+      return s !== null && end !== null && end + 86400000 >= lo && s <= hi;
     })
     .map((e) => e.code);
 }
@@ -286,6 +295,7 @@ export interface FreshnessToken {
 export interface ProbeResult {
   updates: { code: string; matches: FirstMatch[]; lastModified: string | null }[]; // events to re-ingest
   skipped304: number; // events skipped via If-Modified-Since
+  failed: number; // events FIRST wouldn't serve this run (retried next sync)
   tokens: FreshnessToken[]; // Last-Modified values for events with nothing to ingest
 }
 
@@ -298,7 +308,7 @@ export async function probeEvents(
   freshness: Record<string, string>,
   deadline: number,
 ): Promise<ProbeResult> {
-  const out: ProbeResult = { updates: [], skipped304: 0, tokens: [] };
+  const out: ProbeResult = { updates: [], skipped304: 0, failed: 0, tokens: [] };
   await pool(window, deadline, async (code) => {
     try {
       const probe = await firstGetConditional<{ matches: FirstMatch[] }>(
@@ -318,7 +328,7 @@ export async function probeEvents(
         out.tokens.push({ path: `matches/${code}`, lastModified: probe.lastModified });
       }
     } catch {
-      /* no token recorded, so the next sync probes it again */
+      out.failed++; // no token recorded, so the next sync probes it again
     }
   });
   return out;
@@ -331,17 +341,21 @@ export interface DeltaResult {
   updatedEvents: string[];
   newMatches: number;
   tokens: FreshnessToken[]; // fresh Last-Modified values to persist after the push
+  unbuilt: number; // probed events with news that couldn't be read this run
 }
 
 /** Re-ingest the probed events and merge; report only real changes. The probe's
  *  matches body is REUSED for the build (no double fetch), and the existing
  *  modifiedOn/match-count comparison stays as the change backstop. A token is
- *  only returned once its event built, so a failed fetch gets retried. */
+ *  only returned once its event built, so a failed fetch gets retried. `force`
+ *  takes every probed event as changed, picking up what that comparison can't see
+ *  (RP flags and event details live outside /matches). */
 export async function fetchDeltas(
   season: number,
   current: RawEvent[],
   probes: ProbeResult,
   deadline: number,
+  force = false,
 ): Promise<DeltaResult> {
   const built: { code: string; fresh: RawEvent; lastModified: string | null }[] = [];
   await pool(probes.updates, deadline, async ({ code, matches, lastModified }) => {
@@ -355,7 +369,7 @@ export async function fetchDeltas(
       const detail = detailR?.events?.[0];
       if (!detail) return;
       const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
-      built.push({ code, fresh: buildRawEvent(detail, matches, scores, teamInfo), lastModified });
+      built.push({ code, fresh: buildRawEvent(season, detail, matches, scores, teamInfo), lastModified });
     } catch {
       /* no token recorded, so the next sync retries it */
     }
@@ -375,6 +389,7 @@ export async function fetchDeltas(
     const oldKeys = new Set((old?.matches ?? []).map(natKey));
     const added = fresh.matches.filter((m) => !oldKeys.has(natKey(m))).length;
     const changed =
+      force ||
       !old ||
       added > 0 ||
       old.matches.length !== fresh.matches.length ||
@@ -398,5 +413,6 @@ export async function fetchDeltas(
     updatedEvents,
     newMatches,
     tokens,
+    unbuilt: probes.updates.length - built.length,
   };
 }

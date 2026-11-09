@@ -1,4 +1,4 @@
-import { type SimModel, DEFAULT_SIM_MODEL } from "@/lib/predict/model";
+import { type SimModel, DEFAULT_SIM_MODEL, winRpFor } from "@/lib/predict/model";
 import { siteMeta, sitePage, siteTeamRow, siteTeamRows } from "@/lib/data/convexSite";
 
 export interface TeamRanking {
@@ -70,7 +70,11 @@ export async function getSeasonCyclePrior(season: number, eventType?: string): P
 /** Season win/score/RP model for the event simulator. */
 export async function getSimModel(season: number): Promise<SimModel> {
   const r = await siteMeta(season);
-  return (r?.v?.simModel as SimModel | null) ?? DEFAULT_SIM_MODEL;
+  const model = (r?.v?.simModel as SimModel | null) ?? DEFAULT_SIM_MODEL;
+  // Never trust the stored number. With no RP at stake, seeds would just be EPA order,
+  // and DECODE's stored 2 predates the check against FIRST's ranking scores; rebuilding
+  // that season to correct one number would cost far more than this.
+  return { ...model, rp: { ...model.rp, winRp: winRpFor(season) } };
 }
 
 export const SORT_KEYS = [

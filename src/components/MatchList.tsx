@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type { Match, MatchTeam } from "@/lib/ftc/types";
+import type { Match, MatchBreakdown, MatchTeam } from "@/lib/ftc/types";
 import { tournamentLevelLabel } from "@/lib/ftc/labels";
 import Collapsible from "./Collapsible";
 import LocalClock from "./LocalClock";
+import MatchDetails from "./MatchDetails";
 
 function matchCode(m: Match): string {
   if (m.tournamentLevel === "Quals") return `Q${m.matchNum}`;
@@ -14,6 +15,9 @@ export function matchKey(m: Match): string {
   return `${m.tournamentLevel}-${m.series}-${m.matchNum}`;
 }
 
+const RED = "#ff5d6c";
+const BLUE = "#4d8dff";
+
 function AllianceCell({
   teams,
   side,
@@ -21,6 +25,7 @@ function AllianceCell({
   align,
   allianceLabel,
   season,
+  focusTeam,
 }: {
   teams: MatchTeam[];
   side: "Red" | "Blue";
@@ -28,8 +33,9 @@ function AllianceCell({
   align: "left" | "right";
   allianceLabel?: string; // e.g. "Alliance 1" (playoff matches)
   season: number;
+  focusTeam?: number; // underlined, for a list following one team
 }) {
-  const color = won ? (side === "Red" ? "#ff5d6c" : "#4d8dff") : "#6b6f78";
+  const color = won ? (side === "Red" ? RED : BLUE) : "#6b6f78";
   return (
     <div
       className={`flex flex-col gap-0.5 ${
@@ -45,14 +51,41 @@ function AllianceCell({
         <Link
           key={t.teamNumber}
           href={`/teams/${t.teamNumber}?season=${season}`}
-          className="font-mono text-[13px] hover:underline"
-          style={{ color, fontWeight: won ? 700 : 400 }}
+          className={`font-mono text-[13px] hover:underline ${t.teamNumber === focusTeam ? "underline underline-offset-2" : ""}`}
+          style={{
+            color,
+            fontWeight: won ? 700 : 400,
+            textDecorationLine: t.dq ? (t.teamNumber === focusTeam ? "underline line-through" : "line-through") : undefined,
+          }}
+          title={t.dq ? "Disqualified" : t.surrogate ? "Surrogate: doesn't count toward this team's record" : undefined}
         >
           {t.teamNumber}
           {t.surrogate ? "*" : ""}
         </Link>
       ))}
     </div>
+  );
+}
+
+/** One alliance's bonus RPs as dots, filled when earned. */
+function RpDots({ rp, side }: { rp: MatchBreakdown["rp"]; side: "red" | "blue" }) {
+  const color = side === "red" ? RED : BLUE;
+  const earned = rp.filter((c) => c[side]).map((c) => c.label);
+  return (
+    <span
+      className="flex gap-[3px]"
+      role="img"
+      aria-label={earned.length ? `Earned ${earned.join(", ")}` : "No bonus RPs"}
+      title={rp.map((c) => `${c.label}: ${c[side] ? "earned" : "missed"}`).join("\n")}
+    >
+      {rp.map((c) => (
+        <span
+          key={c.label}
+          className="h-[5px] w-[5px] rounded-full border"
+          style={{ borderColor: c[side] ? color : "#3a3f48", background: c[side] ? color : "transparent" }}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -63,6 +96,7 @@ function MatchRow({
   winProb,
   allianceOf,
   season,
+  focusTeam,
 }: {
   m: Match;
   predicted?: number;
@@ -70,6 +104,7 @@ function MatchRow({
   winProb?: number; // red win probability 0..1 (unplayed matches)
   allianceOf?: Map<number, number>; // team -> playoff alliance number
   season: number;
+  focusTeam?: number;
 }) {
   const red = m.teams
     .filter((t) => t.alliance === "Red")
@@ -94,20 +129,32 @@ function MatchRow({
     return undefined;
   };
 
-  return (
-    <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] transition-colors first:border-t-0 hover:bg-[#101010]">
-      <span className="font-mono text-[12px] text-[#6b6f78]">{matchCode(m)}</span>
+  const b = m.breakdown;
+  const row = (
+    <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 px-4 py-[11px] transition-colors hover:bg-[#101010]">
+      <span className="flex items-center gap-1 font-mono text-[12px] text-[#6b6f78]">
+        {matchCode(m)}
+        {b && <span className="text-[#3a3f48] transition-transform group-open:rotate-90">›</span>}
+      </span>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <AllianceCell teams={red} side="Red" won={redWon} align="right" allianceLabel={allyLabel(red)} season={season} />
+        <AllianceCell teams={red} side="Red" won={redWon} align="right" allianceLabel={allyLabel(red)} season={season} focusTeam={focusTeam} />
         {played ? (
-          <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
-            <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
-              {redScore}
-            </span>
-            <span className="text-[#3a3f48]">–</span>
-            <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
-              {blueScore}
-            </span>
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
+              <span style={{ color: redWon ? RED : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
+                {redScore}
+              </span>
+              <span className="text-[#3a3f48]">–</span>
+              <span style={{ color: blueWon ? BLUE : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
+                {blueScore}
+              </span>
+            </div>
+            {b && b.rp.length > 0 && (
+              <div className="flex items-center gap-2.5">
+                <RpDots rp={b.rp} side="red" />
+                <RpDots rp={b.rp} side="blue" />
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-0.5">
@@ -116,9 +163,9 @@ function MatchRow({
                 className="flex items-center gap-1 font-mono text-[12px] tabular-nums"
                 title="Predicted win probability"
               >
-                <span style={{ color: "#ff5d6c" }}>{Math.round(winProb * 100)}%</span>
+                <span style={{ color: RED }}>{Math.round(winProb * 100)}%</span>
                 <span className="text-[#3a3f48]">–</span>
-                <span style={{ color: "#4d8dff" }}>{Math.round((1 - winProb) * 100)}%</span>
+                <span style={{ color: BLUE }}>{Math.round((1 - winProb) * 100)}%</span>
               </div>
             ) : null}
             {predicted != null ? (
@@ -133,9 +180,17 @@ function MatchRow({
             ) : null}
           </div>
         )}
-        <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" allianceLabel={allyLabel(blue)} season={season} />
+        <AllianceCell teams={blue} side="Blue" won={blueWon} align="left" allianceLabel={allyLabel(blue)} season={season} focusTeam={focusTeam} />
       </div>
     </div>
+  );
+
+  const rowClass = "border-t border-[#141414] first:border-t-0";
+  if (!b) return <div className={rowClass}>{row}</div>;
+  return (
+    <MatchDetails breakdown={b} totalRed={redScore} totalBlue={blueScore} className={rowClass}>
+      {row}
+    </MatchDetails>
   );
 }
 
@@ -146,6 +201,7 @@ export default function MatchList({
   winProbs,
   timezone,
   allianceOf,
+  focusTeam,
 }: {
   matches: Match[];
   season: number;
@@ -153,6 +209,7 @@ export default function MatchList({
   winProbs?: Map<string, number>;
   timezone?: string;
   allianceOf?: Map<number, number>;
+  focusTeam?: number; // following one team: its short list stays open
 }) {
   const withTeams = matches.filter((m) => m.teams.length > 0);
 
@@ -192,6 +249,7 @@ export default function MatchList({
                 timezone={timezone}
                 allianceOf={allianceOf}
                 season={season}
+                focusTeam={focusTeam}
               />
             ))}
           </div>
@@ -203,7 +261,7 @@ export default function MatchList({
         );
         // Qualification matches collapse to a dropdown (closed by default) to
         // keep playoffs + results above the fold.
-        if (k === "Quals") {
+        if (k === "Quals" && focusTeam == null) {
           return (
             <Collapsible
               key={k}

@@ -121,11 +121,11 @@ function simOneEvent(
     rpSum[b0] += blueRp; rpSum[b1] += blueRp; rpCnt[b0]++; rpCnt[b1]++;
   }
 
-  // Seed by average RP, ties broken randomly.
+  // Seed by average RP. FIRST breaks ties on average no-penalty score, then tips and
+  // auto, which the sim doesn't track, so EPA stands in for them. Then random.
   const seedOrder = members
-    .map((_, i) => i)
-    .map((i) => ({ i, v: (rpCnt[i] ? rpSum[i] / rpCnt[i] : 0) + rand() * 1e-6 }))
-    .sort((a, b) => b.v - a.v)
+    .map((m, i) => ({ i, v: rpCnt[i] ? rpSum[i] / rpCnt[i] : 0, epa: epaOf(m), r: rand() }))
+    .sort((a, b) => b.v - a.v || b.epa - a.epa || a.r - b.r)
     .map((x) => x.i);
 
   // Alliance selection: captains = top K seeds; softmax picks from the rest.

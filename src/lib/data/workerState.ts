@@ -22,7 +22,7 @@ export interface WorkerState {
 }
 
 // Bump when the raw-crawl schema changes (keeps old caches from being adopted).
-const RAW_VERSION = "v7";
+const RAW_VERSION = "v8";
 const tmpPath = (season: number) => `/tmp/vibescout-worker-${season}-${RAW_VERSION}.gz`;
 
 const cache = new Map<number, WorkerState>();

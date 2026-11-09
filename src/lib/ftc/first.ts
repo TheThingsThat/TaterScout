@@ -29,6 +29,16 @@ const isNotFound = (status: number) => status === 404 || status === 400;
 /** Client errors won't succeed on retry — only back off for 429 and 5xx. */
 const isRetryable = (status: number) => status === 429 || status >= 500;
 
+class NotRetryable extends Error {}
+
+// Retries are for quick failures. A hung upstream gets one attempt and a bit, or a
+// single stuck call would outlast the sync's 60s route (see FETCH_BUDGET_MS).
+const ATTEMPT_TIMEOUT_MS = 12_000;
+const TOTAL_TIMEOUT_MS = 20_000;
+
+const attemptSignal = (total: AbortSignal) =>
+  AbortSignal.any([total, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)]);
+
 interface FirstOpts {
   /** Next cache seconds for live page fetches; omit for `no-store` (crawl). */
   revalidate?: number;
@@ -68,11 +78,12 @@ export async function firstGetConditional<T>(
     Accept: "application/json",
   };
   if (ifModifiedSince) headers["If-Modified-Since"] = ifModifiedSince;
-  const init: RequestInit = { headers, cache: "no-store", signal: AbortSignal.timeout(15000) };
+  const init: RequestInit = { headers, cache: "no-store" };
+  const total = AbortSignal.timeout(TOTAL_TIMEOUT_MS);
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(`${BASE}/${safePath(path)}`, init);
+      const res = await fetch(`${BASE}/${safePath(path)}`, { ...init, signal: attemptSignal(total) });
       if (res.status === 429) {
         await sleep(1000 * (attempt + 1));
         continue;
@@ -80,7 +91,7 @@ export async function firstGetConditional<T>(
       if (res.status === 304) return { notModified: true, data: null, lastModified: ifModifiedSince ?? null };
       if (isNotFound(res.status)) return { notModified: false, data: null, lastModified: null };
       if (!res.ok) {
-        if (!isRetryable(res.status)) throw new Error(`FIRST API ${res.status} on ${path}`);
+        if (!isRetryable(res.status)) throw new NotRetryable(`FIRST API ${res.status} on ${path}`);
         if (attempt === 3) throw new Error(`FIRST API ${res.status} on ${path}`);
         await sleep(500 * (attempt + 1));
         continue;
@@ -91,7 +102,7 @@ export async function firstGetConditional<T>(
         lastModified: res.headers.get("last-modified"),
       };
     } catch (e) {
-      if (attempt === 3) throw e;
+      if (attempt === 3 || e instanceof NotRetryable || total.aborted) throw e;
       await sleep(500 * (attempt + 1));
     }
   }
@@ -101,28 +112,28 @@ export async function firstGetConditional<T>(
 async function firstGetImpl<T>(path: string, opts: FirstOpts = {}): Promise<T | null> {
   const init: RequestInit = {
     headers: { Authorization: authHeader(), Accept: "application/json" },
-    signal: AbortSignal.timeout(15000),
   };
   if (opts.revalidate != null) (init as { next?: unknown }).next = { revalidate: opts.revalidate };
   else init.cache = "no-store";
+  const total = AbortSignal.timeout(TOTAL_TIMEOUT_MS);
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(`${BASE}/${safePath(path)}`, init);
+      const res = await fetch(`${BASE}/${safePath(path)}`, { ...init, signal: attemptSignal(total) });
       if (res.status === 429) {
         await sleep(1000 * (attempt + 1));
         continue;
       }
       if (isNotFound(res.status)) return null;
       if (!res.ok) {
-        if (!isRetryable(res.status)) throw new Error(`FIRST API ${res.status} on ${path}`);
+        if (!isRetryable(res.status)) throw new NotRetryable(`FIRST API ${res.status} on ${path}`);
         if (attempt === 3) throw new Error(`FIRST API ${res.status} on ${path}`);
         await sleep(500 * (attempt + 1));
         continue;
       }
       return (await res.json()) as T;
     } catch (e) {
-      if (attempt === 3) throw e;
+      if (attempt === 3 || e instanceof NotRetryable || total.aborted) throw e;
       await sleep(500 * (attempt + 1));
     }
   }

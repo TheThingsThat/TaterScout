@@ -14,7 +14,7 @@ const DEFAULTS = {
   lastChangedAt: 0,
 };
 
-/** Current sync state (for health checks: `npx convex run sync/state:get`). */
+/** Current sync state, timestamps only (the /status page; `npx convex run sync/state:get`). */
 export const get = query({
   args: { season: v.number() },
   handler: async (ctx, { season }) => {
@@ -55,8 +55,13 @@ export const claim = mutation({
       after !== undefined && now - (last ?? 0) > after;
     const long = due(doc?.lastLongSweepAt, longAfterMs);
     const wide = long || due(doc?.lastWideAt, wideAfterMs);
+    // The hold has passed (or this is forced), so a run that claimed after the last
+    // finish is over without finishing: it threw or was killed.
+    const previousUnfinished = (doc?.lastAttemptAt ?? 0) > (doc?.lastSyncAt ?? 0);
     const patch = {
       nextCheckAt: now + hold,
+      lastAttemptAt: now,
+      failedRuns: (doc?.failedRuns ?? 0) + (previousUnfinished ? 1 : 0),
       ...(wide ? { lastWideAt: now } : {}),
       ...(long ? { lastLongSweepAt: now } : {}),
     };
@@ -79,8 +84,11 @@ export const finish = mutation({
     changed: v.boolean(),
     wide: v.boolean(),
     rankSynced: v.boolean(),
+    // Optional so a site deployed before this change keeps finishing its runs.
+    eventsChecked: v.optional(v.number()),
+    readFailures: v.optional(v.number()),
   },
-  handler: async (ctx, { secret, season, nextCheckAt, changed, wide, rankSynced }) => {
+  handler: async (ctx, { secret, season, nextCheckAt, changed, wide, rankSynced, eventsChecked, readFailures }) => {
     requireSyncSecret(secret);
     const now = Date.now();
     const doc = await ctx.db
@@ -90,6 +98,9 @@ export const finish = mutation({
     const patch = {
       lastSyncAt: now,
       nextCheckAt,
+      failedRuns: 0,
+      lastEventsChecked: eventsChecked ?? 0,
+      lastReadFailures: readFailures ?? 0,
       ...(wide ? { lastWideAt: now } : {}),
       ...(rankSynced ? { lastRankSyncAt: now } : {}),
       ...(changed ? { lastChangedAt: now } : {}),

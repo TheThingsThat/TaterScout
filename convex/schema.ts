@@ -289,6 +289,12 @@ export default defineSchema({
     lastLongSweepAt: v.optional(v.number()), // daily ±14/+3-day sweep
     lastRankSyncAt: v.number(), // daily rank-reconcile cadence
     lastChangedAt: v.number(), // when match data last changed (drives quiet back-off)
+    // When a run last claimed the slot. Newer than lastSyncAt (which only `finish`
+    // stamps) once the hold has passed means that run died or threw: the status page.
+    lastAttemptAt: v.optional(v.number()),
+    failedRuns: v.optional(v.number()), // runs in a row that claimed but never finished
+    lastEventsChecked: v.optional(v.number()), // events the last finished run looked at
+    lastReadFailures: v.optional(v.number()), // of those, how many FIRST wouldn't serve
     // The sync worker's state file (raw events + fingerprints, gzipped JSON,
     // ~2MB — far over the 1MB doc limit, hence file storage). One file per
     // season; commitWorkerState deletes the previous one.

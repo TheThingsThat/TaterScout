@@ -184,7 +184,7 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
           redNp: m.ra + m.rt, blueNp: m.ba + m.bt,
           redRp: m.rrp, blueRp: m.brp,
         });
-  const simModel = computeSimModel(simMatches, (t) => epa.get(t)?.epa);
+  const simModel = computeSimModel(simMatches, (t) => epa.get(t)?.epa, season);
 
   // --- Trajectories (compact arrays) ---
   const eventList: { c: string; n: string | null; s: string | null }[] = [];
@@ -257,7 +257,7 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
         if (r > best) { best = r; bestEv = e; bestTeams = m.red; }
         if (b > best) { best = b; bestEv = e; bestTeams = m.blue; }
       }
-    if (bestEv && best >= 0)
+    if (bestEv && best > 0)
       worldRecord = {
         eventCode: bestEv.code,
         eventName: bestEv.name,

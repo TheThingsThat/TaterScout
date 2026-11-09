@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatDate } from "@/lib/format";
 
 const subscribe = () => () => {};
 
@@ -12,14 +12,18 @@ const subscribe = () => () => {};
 export default function LocalClock({
   ms,
   fallbackTimezone,
+  date = false,
 }: {
   ms: number | null;
   fallbackTimezone?: string;
+  date?: boolean; // the viewer's calendar date ("Nov 8, 2026") instead of the time
 }) {
   const text = useSyncExternalStore(
     subscribe,
-    () => formatClock(ms), // client: browser-local
-    () => formatClock(ms, fallbackTimezone), // SSR: event-local placeholder
+    // client: browser-local
+    () => (date ? formatDate(ms, { local: true }) : formatClock(ms)),
+    // SSR: event-local placeholder (UTC for dates)
+    () => (date ? formatDate(ms) : formatClock(ms, fallbackTimezone)),
   );
   return <>{text}</>;
 }

@@ -48,8 +48,9 @@ empty until it returns.
    ```
 
    `--full` writes every row (required the first time; later runs diff).
-   The seed also uploads the worker state file, which is what lets the
-   deployment's own sync worker start syncing.
+   The seed also uploads the worker state file. A season with no file yet starts
+   from empty, so flipping `CURRENT_SEASON` at rollover needs no seed: the worker
+   picks up played events as far back as its 14-day sweep reaches.
 
 4. **Redeploy** so the env vars take effect.
 

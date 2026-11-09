@@ -20,7 +20,7 @@ export function rankPercentile(rank: number, count: number): number {
 
 export function formatDate(
   value: string | number | null | undefined,
-  opts: { year?: boolean } = {},
+  opts: { year?: boolean; local?: boolean } = {},
 ): string {
   if (value === null || value === undefined || value === "") return "—";
   // Dates from the API are plain YYYY-MM-DD — keep them in UTC to avoid TZ drift.
@@ -33,7 +33,8 @@ export function formatDate(
     month: "short",
     day: "numeric",
     ...(opts.year === false ? {} : { year: "numeric" as const }),
-    timeZone: "UTC",
+    // `local`: the runtime's zone, which in the browser is the viewer's.
+    timeZone: opts.local ? undefined : "UTC",
   });
 }
 
@@ -59,6 +60,23 @@ export function formatClock(
       minute: "2-digit",
     });
   }
+}
+
+/** "just now", "12 min ago", "3 h ago", "2 days ago"; "in 4 min" for a future time. */
+export function formatAgo(ms: number, now: number): string {
+  const d = now - ms;
+  const abs = Math.abs(d);
+  const min = Math.round(abs / 60_000);
+  const text =
+    abs < 60_000
+      ? null
+      : min < 60
+        ? `${min} min`
+        : abs < 48 * 3_600_000
+          ? `${Math.round(abs / 3_600_000)} h`
+          : `${Math.round(abs / 86_400_000)} days`;
+  if (!text) return d >= 0 ? "just now" : "in under a minute";
+  return d >= 0 ? `${text} ago` : `in ${text}`;
 }
 
 export function locationStr(

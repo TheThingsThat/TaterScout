@@ -11,7 +11,7 @@
 //   • Random schedules come from our generateSchedule (FTC 2v2), not Cheesy Arena.
 //   • Expected RP is computed analytically from the calibrated win/RP model
 //     (winRp + bonus logistics), cheap enough to run on-demand.
-import { winProb, sigmoid, normCdf, type SimModel } from "./model";
+import { winProb, expectedBonusRp, normCdf, type SimModel } from "./model";
 import { generateSchedule, type SchedMatchIdx } from "./schedule";
 import { mulberry32 } from "./simulate";
 
@@ -52,21 +52,14 @@ function expectedRpPerTeam(
 ): Float64Array {
   const out = new Float64Array(teamCount);
   const ms = model.marginSd;
-  const cats = model.rp.categories;
   const winRp = model.rp.winRp;
   for (const [r0, r1, b0, b1] of schedule) {
     if (r0 == null || r1 == null || b0 == null || b1 == null) continue;
     const redEpa = epa[r0] + epa[r1];
     const blueEpa = epa[b0] + epa[b1];
     const pRed = winProb(redEpa, blueEpa, ms);
-    let redBonus = 0;
-    let blueBonus = 0;
-    for (const c of cats) {
-      redBonus += sigmoid(c.a + c.b * redEpa);
-      blueBonus += sigmoid(c.a + c.b * blueEpa);
-    }
-    const redRp = winRp * pRed + redBonus;
-    const blueRp = winRp * (1 - pRed) + blueBonus;
+    const redRp = winRp * pRed + expectedBonusRp(redEpa, model);
+    const blueRp = winRp * (1 - pRed) + expectedBonusRp(blueEpa, model);
     out[r0] += redRp;
     out[r1] += redRp;
     out[b0] += blueRp;

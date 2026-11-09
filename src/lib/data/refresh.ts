@@ -54,8 +54,9 @@ const LONG_SWEEP_INTERVAL_MS = 24 * HOUR;
 // one change moves thousands of ranks (user decision).
 const RANK_INTERVAL_MS = 24 * HOUR;
 
-const HOLD_MS = 90_000; // how long a claim blocks other instances
+export const HOLD_MS = 90_000; // how long a claim blocks other instances
 const FETCH_BUDGET_MS = 35_000; // leaves room for the recompute + push inside a 60s route
+const LIST_RETRY_MS = 15 * MINUTE; // FIRST returned no events list; that isn't off-season
 
 let inFlight = false; // per-instance; the Convex claim is the cross-instance lock
 let nextDueAt = 0;
@@ -101,7 +102,9 @@ export async function runRefresh(
     const now = Date.now();
     nextDueAt = now + HOLD_MS;
 
-    const long = manual || claim.long;
+    // A season with no saved state yet (a new season) sweeps as far as it can reach
+    // on every run until something has been played and saved.
+    const long = manual || claim.long || !state.workerStateSavedAt;
     const wide = long || claim.wide;
     // Ranks can only have drifted if data changed since the last reconcile.
     const rankSyncDue =
@@ -110,14 +113,16 @@ export async function runRefresh(
         now - (state.lastRankSyncAt ?? 0) > RANK_INTERVAL_MS);
 
     // Upstream gate: conditional per-event /matches probes (304 = skip).
-    const window = await fetchActiveWindow(
+    const listed = await fetchActiveWindow(
       season,
       long ? undefined : wide ? WIDE_LOOKBACK_DAYS : 0,
       long ? undefined : wide ? WIDE_LOOKAHEAD_DAYS : 0,
     );
+    const window = listed ?? [];
     const freshness: Record<string, string> = {};
     try {
-      for (const codes of chunk(window, 200)) {
+      // A full reconcile ignores tokens: a 304 only vouches for /matches.
+      for (const codes of opts.full ? [] : chunk(window, 200)) {
         Object.assign(
           freshness,
           await target.client.query(api.sync.state.freshness, {
@@ -131,6 +136,8 @@ export async function runRefresh(
     }
     const deadline = t0 + FETCH_BUDGET_MS;
     const probes = await probeEvents(season, window, freshness, deadline);
+    // Events with news this run couldn't read (probe or build failed); each retries.
+    let readFailures = probes.failed;
 
     // Written only after the sync's work has landed: a token stored earlier would
     // turn a killed or failed run into a 304, and that update would be lost.
@@ -149,8 +156,12 @@ export async function runRefresh(
     };
 
     const finish = async (changed: boolean, rankSynced: boolean) => {
+      // Anything left unread gets the quick cadence, not the idle one.
       nextDueAt =
-        Date.now() + nextDelayMs(changed, window.length, state.lastChangedAt ?? 0, Date.now());
+        Date.now() +
+        (listed
+          ? nextDelayMs(changed || readFailures > 0, window.length, state.lastChangedAt ?? 0, Date.now())
+          : LIST_RETRY_MS);
       await target.client.mutation(api.sync.state.finish, {
         secret: target.secret,
         season,
@@ -158,6 +169,8 @@ export async function runRefresh(
         changed,
         wide,
         rankSynced,
+        eventsChecked: window.length,
+        readFailures,
       });
     };
 
@@ -181,24 +194,24 @@ export async function runRefresh(
 
     // Worker state: memory-first; re-fetched from Convex file storage only when
     // the committed file is newer than our copy. A 2MB download, hence the gate.
+    // Saved state that can't be read throws here; null means none was ever saved.
     const worker = await loadWorkerState(season, {
       target,
       staleIfSavedBefore: state.workerStateSavedAt,
     });
-    if (!worker || worker.events.length === 0) {
-      throw new Error(
-        `Worker state not seeded for season ${season} — run scripts/build-epa.ts, then scripts/seed-convex.ts.`,
-      );
-    }
+    const current = worker?.events ?? [];
 
-    const delta = await fetchDeltas(season, worker.events, probes, deadline);
-    if (!delta.changed && !rankSyncDue) return await finishQuiet(delta.tokens);
+    const delta = await fetchDeltas(season, current, probes, deadline, opts.full === true);
+    readFailures += delta.unbuilt;
+    // With nothing played and no saved state, a manual full run has nothing to save yet.
+    if (!delta.changed && (!rankSyncDue || !worker)) return await finishQuiet(delta.tokens);
 
     // Recompute the whole season (cheap, ~1-2s), then persist only the delta.
     const computed = computeSeasonData(season, delta.events);
     const { docs, fingerprints } = buildSiteDocs(computed);
-    const mode = rankSyncDue ? "full" : "stats";
-    const prevFp = opts.full ? null : worker.fingerprints;
+    const prevFp = opts.full ? null : (worker?.fingerprints ?? null);
+    // With nothing to diff against, every row is new and needs its ranks written.
+    const mode = rankSyncDue || !prevFp ? "full" : "stats";
     const diff = diffFingerprints(fingerprints, prevFp, mode);
     const nextFp = fingerprintsAfterPush(fingerprints, prevFp, diff, mode);
 
@@ -209,16 +222,20 @@ export async function runRefresh(
       // A failed batch may have landed partially: drop the attempted keys from
       // the fingerprint map so the next sync rewrites them. Keeping the OLD events
       // means that sync sees the same change again and gets that far (self-healing).
-      await saveWorkerState(
-        season,
-        {
-          savedAt: Date.now(),
-          events: worker.events,
-          fingerprints: invalidateKeys(nextFp, diff),
-        },
-        target,
-        { expectedSavedAt: state.workerStateSavedAt ?? 0 },
-      );
+      // A season's first push has no state to protect: saving one would only end its
+      // long sweeps, and the next run rewrites every row anyway.
+      if (worker) {
+        await saveWorkerState(
+          season,
+          {
+            savedAt: Date.now(),
+            events: current,
+            fingerprints: invalidateKeys(nextFp, diff),
+          },
+          target,
+          { expectedSavedAt: state.workerStateSavedAt ?? 0 },
+        );
+      }
       throw e;
     }
 

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Footer() {
   return (
     <footer className="border-t border-[#161616] bg-black">
@@ -15,7 +17,10 @@ export default function Footer() {
           >
             official FIRST Tech Challenge Events API
           </a>
-          . Not affiliated with FIRST.
+          . Not affiliated with FIRST.{" "}
+          <Link href="/status" className="text-[#8a90a0] no-underline hover:text-foreground">
+            System status
+          </Link>
         </p>
       </div>
     </footer>
