@@ -118,6 +118,13 @@ export async function getRankingMap(
   return out;
 }
 
+/** Up to 250 teams' rows in one read; null when Convex couldn't be read, which
+ *  getRankingMap can't tell apart from teams that simply have no rating. */
+export async function tryRankingMap(season: number, teamNumbers: number[]): Promise<Map<number, TeamRanking> | null> {
+  const r = await siteTeamRows(season, teamNumbers.slice(0, 250));
+  return r ? new Map(r.v.map((doc) => [doc.team, docToRanking(doc)])) : null;
+}
+
 export interface RankingQuery {
   region?: string | null;
   sort: SortKey;

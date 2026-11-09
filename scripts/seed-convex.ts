@@ -11,6 +11,10 @@
  * Convex file storage so the deployment's own sync worker can bootstrap.
  * Env: NEXT_PUBLIC_CONVEX_URL (or CONVEX_URL) + SYNC_SECRET, read from
  * .env.local when not already in the environment.
+ *
+ * Past seasons (before CURRENT_SEASON) are static: only the site rows are written,
+ * and the fingerprints are kept in the local cache so a re-run writes nothing.
+ * Their datasets live outside git: VIBESCOUT_DATA_DIR=data/seasons.
  */
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
@@ -31,6 +35,9 @@ const FULL = process.argv.includes("--full");
 // crawl (that would roll back every update the worker synced since). --force
 // overrides; normally run build-epa.ts --refetch instead.
 const FORCE = process.argv.includes("--force");
+// A past season is static: computed once and never synced, so the deployment needs
+// only its site rows: no sync state, worker-state file or freshness tokens.
+const STATIC = SEASON < CURRENT_SEASON;
 
 // Minimal .env.local loader (tsx scripts don't get Next's env handling).
 function loadEnvLocal(): void {
@@ -58,6 +65,23 @@ async function main() {
     eventStats: JSON.parse(readFileSync(path.join(dataDir, `event-stats-${SEASON}.json`), "utf8")),
   };
   const { docs, fingerprints } = buildSiteDocs(data);
+
+  if (STATIC) {
+    const local = await loadWorkerState(SEASON);
+    const prev = FULL ? null : (local?.fingerprints ?? null);
+    const diff = diffFingerprints(fingerprints, prev, "full");
+    console.log(`[seed-convex] target ${target.client.url ?? "?"} · static season ${SEASON}${FULL ? " (--full)" : ""}`);
+    console.log(
+      `[seed-convex] to write: meta=${diff.meta} teams=${diff.teams.length} traj=${diff.trajectories.length} eventStats=${diff.eventStats.length} events=${diff.events.length}`,
+    );
+    const wrote = await pushSiteDocs(target, docs, diff);
+    // Local only: remembers what was written, so re-running against this deployment is a no-op.
+    await saveWorkerState(SEASON, { savedAt: Date.now(), events: local?.events ?? [], fingerprints });
+    console.log(
+      `[seed-convex] done: ${wrote.calls} mutation calls (${wrote.teams} teams, ${wrote.trajectories} traj, ${wrote.eventStats} eventStats, ${wrote.events} events)`,
+    );
+    return;
+  }
 
   // Previous fingerprints come from the worker state (local cache first, then
   // the target's Convex file storage).

@@ -2,13 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getTeam, getEventMatches, getTeamEventRank, recordOf } from "@/lib/ftc/queries";
-import { CURRENT_SEASON, seasonFull, seasonLabel, parseSeasonParam } from "@/lib/season";
+import {
+  CURRENT_SEASON,
+  allSeasons,
+  seasonFull,
+  seasonLabel,
+  parseSeasonParam,
+  ratingsCoverageNote,
+} from "@/lib/season";
 import { formatAward } from "@/lib/ftc/labels";
 import { locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
 import { getTrajectory } from "@/lib/trajectory";
-import type { Match, QuickStats, TeamEventLite } from "@/lib/ftc/types";
+import type { Match, QuickStats, Team, TeamEventLite } from "@/lib/ftc/types";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import { predictMatchTimes, FTC_DEFAULTS, type SchedMatch } from "@/lib/predict/matchTimes";
 import StatTiles from "@/components/StatTiles";
@@ -17,6 +24,7 @@ import TrajectoryChart from "@/components/TrajectoryChart";
 import LiveRefresh from "@/components/LiveRefresh";
 import LocalClock from "@/components/LocalClock";
 import TeamEventCard from "@/components/TeamEventCard";
+import StarButton from "@/components/StarButton";
 import { matchKey } from "@/components/MatchList";
 
 interface NextMatch {
@@ -96,6 +104,9 @@ interface Props {
 // Clamp to seasons we have data for — this drives dataset reads and FIRST calls.
 const parseSeason = parseSeasonParam;
 
+/** Seasons we have data for, newest first, from the team's rookie year on. */
+const seasonsSince = (rookieYear: number) => allSeasons().filter((s) => s >= rookieYear);
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { number } = await params;
   try {
@@ -111,6 +122,89 @@ const HEADING = "font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
 const OUTLINE_BTN =
   "rounded-[10px] border border-[#232323] px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-[#3a3a3a] hover:text-foreground";
 
+/** The banner: number, name, location, and the star / website / FTCScout buttons. */
+function TeamHeader({ team }: { team: Team }) {
+  return (
+    <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
+      <div className="flex flex-wrap items-start justify-between gap-[18px]">
+        <div>
+          <div className="flex items-center gap-3.5">
+            <span
+              className="rounded-[10px] px-3 py-1 font-mono text-[20px] font-bold text-accent"
+              style={{
+                background: "rgba(205,14,14,0.12)",
+                border: "1px solid rgba(205,14,14,0.3)",
+              }}
+            >
+              {team.number}
+            </span>
+            <h1 className="m-0 text-[clamp(28px,4vw,40px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+              {team.name}
+            </h1>
+          </div>
+          <p className="mt-3.5 text-[14px] text-muted">
+            {locationStr(team.location)}
+            {team.rookieYear > 0 ? ` · Rookie year ${team.rookieYear}` : ""}
+          </p>
+          {team.schoolName && (
+            <p className="mt-1 text-[14px] text-[#6b6f78]">{team.schoolName}</p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          <StarButton team={team.number} />
+          {team.website && (
+            <a href={team.website} target="_blank" rel="noreferrer" className={OUTLINE_BTN}>
+              Website ↗
+            </a>
+          )}
+          <a
+            href={`https://ftcscout.org/teams/${team.number}`}
+            target="_blank"
+            rel="noreferrer"
+            className={OUTLINE_BTN}
+          >
+            FTCScout ↗
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Seasons the team could have played since its rookie year; `children` sits on the right. */
+function SeasonTabs({
+  team,
+  seasons,
+  season,
+  children,
+}: {
+  team: number;
+  seasons: number[];
+  season: number;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2.5">
+      <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">Season</span>
+      {seasons.map((s) => (
+        <Link
+          key={s}
+          href={s === CURRENT_SEASON ? `/teams/${team}` : `/teams/${team}?season=${s}`}
+          className="rounded-[10px] px-3.5 py-2 text-[13px] transition-colors"
+          style={
+            s === season
+              ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
+              : { border: "1px solid #232323", color: "#9aa0aa" }
+          }
+        >
+          {seasonLabel(s)}
+        </Link>
+      ))}
+      {children}
+    </div>
+  );
+}
+
 export default async function TeamPage({ params, searchParams }: Props) {
   const { number } = await params;
   const season = parseSeason((await searchParams).season);
@@ -120,12 +214,22 @@ export default async function TeamPage({ params, searchParams }: Props) {
   scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const team = await getTeam(num, season);
-  if (!team) notFound();
+  if (!team) {
+    // Not registered that season: still show the team, with a way to its other seasons.
+    const current = season === CURRENT_SEASON ? null : await getTeam(num, CURRENT_SEASON);
+    if (!current) notFound();
+    return (
+      <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
+        <TeamHeader team={current} />
+        <SeasonTabs team={num} seasons={seasonsSince(current.rookieYear)} season={season} />
+        <div className="card p-6 text-center text-sm text-muted">
+          Team {num} didn&apos;t compete in {seasonFull(season)}.
+        </div>
+      </div>
+    );
+  }
 
-  const seasons =
-    team.activeSeasons.length > 0
-      ? [...new Set(team.activeSeasons)].sort((a, b) => b - a)
-      : [CURRENT_SEASON];
+  const seasons = seasonsSince(team.rookieYear);
 
   const [epa, epaTeamCount, traj] = await Promise.all([
     getTeamRanking(season, num),
@@ -213,69 +317,8 @@ export default async function TeamPage({ params, searchParams }: Props) {
         </div>
       )}
 
-      {/* Header card */}
-      <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
-        <div className="flex flex-wrap items-start justify-between gap-[18px]">
-          <div>
-            <div className="flex items-center gap-3.5">
-              <span
-                className="rounded-[10px] px-3 py-1 font-mono text-[20px] font-bold text-accent"
-                style={{
-                  background: "rgba(205,14,14,0.12)",
-                  border: "1px solid rgba(205,14,14,0.3)",
-                }}
-              >
-                {team.number}
-              </span>
-              <h1 className="m-0 text-[clamp(28px,4vw,40px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
-                {team.name}
-              </h1>
-            </div>
-            <p className="mt-3.5 text-[14px] text-muted">
-              {locationStr(team.location)}
-              {team.rookieYear > 0 ? ` · Rookie year ${team.rookieYear}` : ""}
-            </p>
-            {team.schoolName && (
-              <p className="mt-1 text-[14px] text-[#6b6f78]">{team.schoolName}</p>
-            )}
-          </div>
-          <div className="flex gap-2.5">
-            {team.website && (
-              <a href={team.website} target="_blank" rel="noreferrer" className={OUTLINE_BTN}>
-                Website ↗
-              </a>
-            )}
-            <a
-              href={`https://ftcscout.org/teams/${team.number}`}
-              target="_blank"
-              rel="noreferrer"
-              className={OUTLINE_BTN}
-            >
-              FTCScout ↗
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* Season tabs */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
-          Season
-        </span>
-        {seasons.map((s) => (
-          <Link
-            key={s}
-            href={`/teams/${team.number}?season=${s}`}
-            className="rounded-[10px] px-3.5 py-2 text-[13px] transition-colors"
-            style={
-              s === season
-                ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
-                : { border: "1px solid #232323", color: "#9aa0aa" }
-            }
-          >
-            {seasonLabel(s)}
-          </Link>
-        ))}
+      <TeamHeader team={team} />
+      <SeasonTabs team={team.number} seasons={seasons} season={season}>
         {recordGames > 0 && (
           <span className="ml-auto flex items-baseline gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
@@ -287,7 +330,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
             </span>
           </span>
         )}
-      </div>
+      </SeasonTabs>
 
       {/* EPA */}
       {epa && (
@@ -308,6 +351,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
         ) : (
           <div className="card p-6 text-center text-sm text-muted">
             No ranked stats for {team.number} in {seasonLabel(season)}.
+            {ratingsCoverageNote(season) ? ` ${ratingsCoverageNote(season)}` : ""}
           </div>
         )}
       </section>

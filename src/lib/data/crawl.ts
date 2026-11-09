@@ -34,8 +34,9 @@ interface FirstMatch {
   tournamentLevel: string; // "PRACTICE" | "QUALIFICATION" | "PLAYOFF"
   series: number;
   matchNumber: number;
-  // `score{X}Foul` is the penalty points X COMMITTED (credited to the other
-  // alliance), so X's no-penalty score is its final minus the OPPONENT's foul.
+  // `score{X}Foul` is the penalty points X COMMITTED. From 2022 (and in 2019) they
+  // are credited to the other alliance, so X's no-penalty score is its final minus
+  // the OPPONENT's foul. 2020-21 differ: see SELF_PENALTY_SEASONS.
   scoreRedFinal: number | null;
   scoreRedFoul: number | null;
   scoreRedAuto: number | null;
@@ -48,6 +49,11 @@ interface FirstMatch {
 interface FirstAllianceScore {
   alliance: "Red" | "Blue";
   totalPoints?: number;
+  // No-penalty parts, read only for SELF_PENALTY_SEASONS (2020 names dc, 2021 driverControlled).
+  autoPoints?: number;
+  dcPoints?: number;
+  driverControlledPoints?: number;
+  endgamePoints?: number;
   // Ranking-point flags are GAME-SPECIFIC. A new season's read as undefined → 0
   // until they are added to rpFlags below.
   movementRP?: boolean; // DECODE 2025
@@ -117,14 +123,33 @@ async function fetchEventTeams(season: number, code: string): Promise<Map<number
   return map;
 }
 
+const RP_KEYS = ["movementRP", "goalRP", "patternRP", "swarmRP", "pollinator1RP", "pollinator2RP"] as const;
+
 /** One alliance's bonus ranking points as positional 0/1 flags. Empty means unknown:
- *  no score row yet, or a zeroed one (see below) whose flags would read as all-missed. */
+ *  no score row yet, a zeroed one (see below) whose flags would read as all-missed,
+ *  or a season with no bonus RPs at all (before 2025), whose rows carry no RP keys. */
 const rpFlags = (a: FirstAllianceScore | undefined, allianceFinal: number | null): number[] =>
-  !a || (a.totalPoints === 0 && (allianceFinal ?? 0) > 0)
+  !a || (a.totalPoints === 0 && (allianceFinal ?? 0) > 0) || !RP_KEYS.some((k) => k in a)
     ? []
     : [a.movementRP ?? a.swarmRP, a.goalRP ?? a.pollinator1RP, a.patternRP ?? a.pollinator2RP].map(
         (earned) => (earned ? 1 : 0),
       );
+
+// ULTIMATE GOAL (2020) and FREIGHT FRENZY (2021) deducted penalties from the alliance
+// that COMMITTED them (final floored at 0) instead of crediting the opponent. Checked
+// against the score breakdowns: 396/396 (2020) and 612/612 (2021) alliance rows.
+const SELF_PENALTY_SEASONS = new Set([2020, 2021]);
+
+/** A self-penalty season's no-penalty score: the breakdown's parts when present, else
+ *  final + own foul. Null when unrecoverable (a final floored at 0 by its own fouls). */
+function selfPenaltyNoPen(a: FirstAllianceScore | undefined, final: number | null, ownFoul: number | null): number | null {
+  const dc = a?.dcPoints ?? a?.driverControlledPoints;
+  if (a && typeof a.autoPoints === "number" && typeof dc === "number" && typeof a.endgamePoints === "number") {
+    return a.autoPoints + dc + a.endgamePoints;
+  }
+  if ((final ?? 0) > 0) return (final ?? 0) + (ownFoul ?? 0);
+  return (ownFoul ?? 0) > 0 ? null : 0;
+}
 
 const isPlayed = (m: FirstMatch): boolean =>
   m.tournamentLevel !== "PRACTICE" && isScored(m.scoreRedFinal, m.scoreBlueFinal);
@@ -162,14 +187,24 @@ function buildRawEvent(
     // FIRST serves the breakdown zeroed until a new season's score model ships
     // (BIOBUZZ's first events posted real finals with all-zero breakdowns), and
     // the two agree exactly once it does (checked on 2,850 DECODE alliance rows).
+    const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
     const ra = m.scoreRedAuto ?? 0;
     const ba = m.scoreBlueAuto ?? 0;
-    const rt = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0) - ra;
-    const bt = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0) - ba;
+    let rt: number;
+    let bt: number;
+    if (SELF_PENALTY_SEASONS.has(season)) {
+      const rnp = selfPenaltyNoPen(sc?.red, m.scoreRedFinal, m.scoreRedFoul);
+      const bnp = selfPenaltyNoPen(sc?.blue, m.scoreBlueFinal, m.scoreBlueFoul);
+      if (rnp === null || bnp === null) continue;
+      rt = rnp - ra;
+      bt = bnp - ba;
+    } else {
+      rt = (m.scoreRedFinal ?? 0) - (m.scoreBlueFoul ?? 0) - ra;
+      bt = (m.scoreBlueFinal ?? 0) - (m.scoreRedFoul ?? 0) - ba;
+    }
     // A disqualified playoff alliance's final is zeroed with the opponent's fouls still
     // on the row, which makes its no-penalty score negative. No usable score to rate.
     if (rt + ra < 0 || bt + ba < 0) continue;
-    const sc = scoreByKey.get(`${m.tournamentLevel}|${m.series}|${m.matchNumber}`);
     const tz = detail.timezone;
     const time =
       venueTimeMs(m.actualStartTime, tz) ??
@@ -226,27 +261,42 @@ export async function fetchAllEvents(
   const details = evR?.events ?? [];
   const out: RawEvent[] = [];
   let done = 0;
+  const failed: FirstEvent[] = [];
+  const crawlOne = async (d: FirstEvent) => {
+    const [matchR, qs, ps] = await Promise.all([
+      getMatches(season, d.code),
+      getScores(season, d.code, "qual"),
+      getScores(season, d.code, "playoff"),
+    ]);
+    const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
+    const ev = buildRawEvent(season, d, matchR?.matches ?? [], scores, teamIndex);
+    if (ev.matches.length) out.push(ev);
+  };
   const queue = [...details];
   async function worker() {
     while (queue.length) {
       const d = queue.pop()!;
       try {
-        const [matchR, qs, ps] = await Promise.all([
-          getMatches(season, d.code),
-          getScores(season, d.code, "qual"),
-          getScores(season, d.code, "playoff"),
-        ]);
-        const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
-        const ev = buildRawEvent(season, d, matchR?.matches ?? [], scores, teamIndex);
-        if (ev.matches.length) out.push(ev);
+        await crawlOne(d);
       } catch {
-        /* skip a failed event */
+        failed.push(d); // retried below
       }
       done++;
       onProgress?.(done, details.length);
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  // A past season is crawled once and kept, so give each failed event one more
+  // try, one at a time, rather than silently losing it.
+  const lost: string[] = [];
+  for (const d of failed) {
+    try {
+      await crawlOne(d);
+    } catch {
+      lost.push(d.code);
+    }
+  }
+  if (lost.length) console.warn(`[crawl] ${season}: ${lost.length} events failed twice: ${lost.join(", ")}`);
   return out;
 }
 

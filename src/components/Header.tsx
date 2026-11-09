@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SearchBar from "./SearchBar";
 import NavLinks from "./NavLinks";
+import AccountMenu from "./AccountMenu";
 
 export default function Header() {
   return (
@@ -11,10 +12,17 @@ export default function Header() {
             TaterScout
           </span>
         </Link>
-        <div className="min-w-0 flex-1 min-[860px]:mx-auto min-[860px]:w-full min-[860px]:max-w-[420px] min-[860px]:flex-initial">
+        <div className="order-1 min-w-0 flex-1 min-[860px]:mx-auto min-[860px]:w-full min-[860px]:max-w-[420px] min-[860px]:flex-initial">
           <SearchBar />
         </div>
-        <NavLinks />
+        {/* Narrow screens: account sits top-right beside the search, nav wraps below.
+            Wide screens: nav, then account at the far right. */}
+        <div className="order-3 w-full min-[860px]:order-2 min-[860px]:w-auto">
+          <NavLinks />
+        </div>
+        <div className="order-2 min-[860px]:order-3">
+          <AccountMenu />
+        </div>
       </div>
     </header>
   );

@@ -14,7 +14,7 @@ interface LineDef {
 interface SeasonDef {
   auto: LineDef[];
   teleop: LineDef[];
-  rp: { field: string; label: string }[];
+  rp: { field: string; label: string; short: string }[]; // short: written in the RP circle
 }
 
 const SEASONS: Record<number, SeasonDef> = {
@@ -31,9 +31,9 @@ const SEASONS: Record<number, SeasonDef> = {
       { label: "Park", points: "teleopParkPoints" },
     ],
     rp: [
-      { field: "swarmRP", label: "Swarm" },
-      { field: "pollinator1RP", label: "Pollinator 1" },
-      { field: "pollinator2RP", label: "Pollinator 2" },
+      { field: "swarmRP", label: "Swarm", short: "S" },
+      { field: "pollinator1RP", label: "Pollinator 1", short: "P1" },
+      { field: "pollinator2RP", label: "Pollinator 2", short: "P2" },
     ],
   },
   2025: {
@@ -49,9 +49,9 @@ const SEASONS: Record<number, SeasonDef> = {
       { label: "Base", points: "teleopBasePoints" },
     ],
     rp: [
-      { field: "movementRP", label: "Movement" },
-      { field: "goalRP", label: "Goal" },
-      { field: "patternRP", label: "Pattern" },
+      { field: "movementRP", label: "Movement", short: "M" },
+      { field: "goalRP", label: "Goal", short: "G" },
+      { field: "patternRP", label: "Pattern", short: "P" },
     ],
   },
 };
@@ -100,7 +100,7 @@ export function buildBreakdown(
   const matchRp = (mine: number, theirs: number) =>
     mine > theirs ? WIN_RP : mine === theirs ? TIE_RP : 0;
   const rp = quals
-    ? def.rp.map((c) => ({ label: c.label, red: red[c.field] === true, blue: blue[c.field] === true }))
+    ? def.rp.map((c) => ({ label: c.label, short: c.short, red: red[c.field] === true, blue: blue[c.field] === true }))
     : [];
 
   return {

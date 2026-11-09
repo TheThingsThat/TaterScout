@@ -39,6 +39,19 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  // Teams a signed-in user follows on the public site (homepage + team pages).
+  // Season-independent: a star is on the team, not on one season of it.
+  stars: defineTable({
+    userId: v.id("users"),
+    team: v.number(),
+  }).index("by_user_team", ["userId", "team"]),
+
+  // The one region a user follows on the homepage (its top 10 teams). At most one row per user.
+  regionStars: defineTable({
+    userId: v.id("users"),
+    region: v.string(), // FIRST home-region code, e.g. "USTXCE"
+  }).index("by_user", ["userId"]),
+
   // Membership of a user in a workspace, with role.
   members: defineTable({
     workspaceId: v.id("workspaces"),

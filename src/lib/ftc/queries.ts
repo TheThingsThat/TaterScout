@@ -1,6 +1,7 @@
 // Live data access for pages. Team/event detail come straight from the official
 // FIRST Events API (first.ts); season snapshot, world record and search read our
 // precomputed store (FIRST has no season-OPR or fuzzy-search endpoints).
+import { unstable_cache } from "next/cache";
 import { firstGet } from "./first";
 import { levelOf, normalizeEventType } from "./labels";
 import { isAllianceMatch, isScored, teamsOnField, venueTimeIso, venueTimeMs, venueToday } from "./match";
@@ -109,6 +110,8 @@ interface FAward {
 
 const REVALIDATE = 60; // seconds for live page fetches
 const SETTLED_REVALIDATE = 86400;
+/** A finished season's FIRST data no longer changes: cache it for a day. */
+const ttl = (season: number) => (season < CURRENT_SEASON ? SETTLED_REVALIDATE : REVALIDATE);
 const SETTLED_AFTER_MS = 14 * 86400000; // past the longest sync sweep window
 
 const now = () => Date.now();
@@ -137,16 +140,8 @@ function mapAward(name: string, series: number): { type: string; placement: numb
 // ---------------------------------------------------------------------------
 // TEAM
 // ---------------------------------------------------------------------------
-export async function getTeam(number: number, season: number): Promise<Team | null> {
-  const [teamR, eventsR, awardsR] = await Promise.all([
-    firstGet<{ teams: FTeam[] }>(`${season}/teams?teamNumber=${number}`, { revalidate: 3600 }),
-    firstGet<{ events: FEvent[] }>(`${season}/events?teamNumber=${number}`, { revalidate: REVALIDATE }),
-    firstGet<{ awards: FAward[] }>(`${season}/awards/${number}`, { revalidate: REVALIDATE }),
-  ]);
-  const t = teamR?.teams?.[0];
-  if (!t) return null;
-
-  const events: TeamEventLite[] = (eventsR?.events ?? []).map((e) => ({
+function toTeamEvent(e: FEvent, season: number): TeamEventLite {
+  return {
     eventCode: e.code,
     event: {
       name: e.name ?? e.code,
@@ -158,7 +153,19 @@ export async function getTeam(number: number, season: number): Promise<Team | nu
       timezone: e.timezone ?? "UTC",
       location: { city: e.city, state: e.stateprov, country: e.country },
     },
-  }));
+  };
+}
+
+export async function getTeam(number: number, season: number): Promise<Team | null> {
+  const [teamR, eventsR, awardsR] = await Promise.all([
+    firstGet<{ teams: FTeam[] }>(`${season}/teams?teamNumber=${number}`, { revalidate: 3600 }),
+    firstGet<{ events: FEvent[] }>(`${season}/events?teamNumber=${number}`, { revalidate: ttl(season) }),
+    firstGet<{ awards: FAward[] }>(`${season}/awards/${number}`, { revalidate: ttl(season) }),
+  ]);
+  const t = teamR?.teams?.[0];
+  if (!t) return null;
+
+  const events = (eventsR?.events ?? []).map((e) => toTeamEvent(e, season));
   const nameByCode = new Map(events.map((e) => [e.eventCode, e.event.name]));
 
   const awards: AwardLite[] = (awardsR?.awards ?? []).map((a) => {
@@ -184,6 +191,60 @@ export async function getTeam(number: number, season: number): Promise<Team | nu
     events,
     awards,
   };
+}
+
+export interface TeamUpcoming {
+  number: number;
+  name: string;
+  /** The event the team is at now, else its next one this season; null if none. */
+  next: (TeamEventLite["event"] & { startMs: number | null; endMs: number | null }) | null;
+}
+
+/**
+ * A team's name and this season's events with venue start/end instants, for the
+ * starred-teams view. Same FIRST URLs as getTeam (shared fetch-cache entries), but
+ * the result is cached 15 minutes as a whole, unknown teams included, so the
+ * homepage doesn't refresh every starred team each minute and an invented team
+ * number costs FIRST calls once per window rather than per request. Transient
+ * FIRST failures throw, so they're never cached.
+ */
+const teamEventsCached = unstable_cache(
+  async (number: number, season: number) => {
+    const [teamR, eventsR] = await Promise.all([
+      firstGet<{ teams: FTeam[] }>(`${season}/teams?teamNumber=${number}`, { revalidate: 3600 }),
+      firstGet<{ events: FEvent[] }>(`${season}/events?teamNumber=${number}`, { revalidate: REVALIDATE }),
+    ]);
+    const t = teamR?.teams?.[0];
+    if (!t) return null;
+    return {
+      number: t.teamNumber,
+      name: t.nameShort ?? `Team ${t.teamNumber}`,
+      events: (eventsR?.events ?? []).map((e) => {
+        const startMs = venueTimeMs(e.dateStart, e.timezone);
+        // Through the end of its last day at the venue (as isOngoing counts it).
+        const end = venueTimeMs(e.dateEnd ?? e.dateStart, e.timezone);
+        return { ...toTeamEvent(e, season).event, startMs, endMs: end === null ? null : end + 86400000 };
+      }),
+    };
+  },
+  ["team-upcoming"],
+  { revalidate: 900 },
+);
+
+/** A team's name and current-or-next event (null if neither); null for an unknown team. */
+export async function getTeamUpcoming(number: number, season: number): Promise<TeamUpcoming | null> {
+  const team = await teamEventsCached(number, season);
+  if (!team) return null;
+  const t0 = now();
+  // `ongoing` is recomputed here: the cached copy can be up to 15 minutes old.
+  const live = (e: { startMs: number | null; endMs: number | null }) =>
+    e.startMs !== null && e.startMs <= t0 && (e.endMs === null || t0 < e.endMs);
+  const candidates = team.events
+    .map((e) => ({ ...e, ongoing: live(e) }))
+    .filter((e) => e.ongoing || (e.startMs !== null && e.startMs > t0))
+    // At an event now beats a later one; then soonest first.
+    .sort((a, b) => Number(b.ongoing) - Number(a.ongoing) || (a.startMs ?? Infinity) - (b.startMs ?? Infinity));
+  return { number: team.number, name: team.name, next: candidates[0] ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,14 +386,14 @@ function buildMatches(
 export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
   if (!(await isRealEventCode(season, code))) return null;
   const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
-    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: REVALIDATE }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: REVALIDATE }),
-    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: REVALIDATE })),
-    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: REVALIDATE })),
-    optional(getEventRankings(season, code)),
-    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: REVALIDATE }),
-    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: REVALIDATE }),
+    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: ttl(season) }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: ttl(season) }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: ttl(season) }),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: ttl(season) })),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: ttl(season) })),
+    optional(getEventRankings(season, code, ttl(season))),
+    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: ttl(season) }),
+    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: ttl(season) }),
     fetchEventTeamNames(season, code),
   ]);
   const d = detailR?.events?.[0];
@@ -518,7 +579,7 @@ function scoreMatch(hayName: string, needle: string, extra?: string): number {
  *  precomputed store — which only holds events that already have matches — this
  *  includes UPCOMING events, so they stay searchable/importable before start. */
 async function getSeasonEventList(season: number): Promise<EventSearchResult[]> {
-  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: REVALIDATE });
+  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: ttl(season) });
   return (r?.events ?? []).map((e) => ({
     code: e.code,
     season,
@@ -531,7 +592,7 @@ async function getSeasonEventList(season: number): Promise<EventSearchResult[]> 
 
 /** Every event in a season for the events index, including upcoming ones. */
 export async function getEventIndex(season: number): Promise<EventIndexRow[]> {
-  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: REVALIDATE });
+  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: ttl(season) });
   const t = now();
   // Old seasons have some junk codes ("63693260770.2649"), 209 of 2019's 1,130, that the
   // event page refuses. Same check as that page, which upper-cases first.

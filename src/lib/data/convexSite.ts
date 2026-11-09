@@ -19,14 +19,33 @@ const ttl = (season: number, current: number) => (season === CURRENT_SEASON ? cu
 
 const url = () => process.env.NEXT_PUBLIC_CONVEX_URL!;
 
+/** Thrown inside the cache to return a result without storing it. */
+class Uncached<T> {
+  constructor(readonly v: T) {}
+}
+
+/**
+ * Past seasons are seeded once, possibly after their pages were first visited, so
+ * a "not found" for one is never cached (it would hide freshly seeded data for the
+ * whole TTL), and their keys carry a version that retires anything cached before.
+ */
+const PAST = "s2";
+
 async function cq<T>(key: (string | number)[], ttl: number, fn: () => Promise<T>) {
+  const season = typeof key[1] === "number" ? key[1] : CURRENT_SEASON;
+  const past = season < CURRENT_SEASON;
   try {
     return await unstable_cache(
-      async (): Promise<{ v: T }> => ({ v: await fn() }),
-      ["convex-site", ...key.map(String)],
+      async (): Promise<{ v: T }> => {
+        const v = await fn();
+        if (past && v == null) throw new Uncached(v);
+        return { v };
+      },
+      ["convex-site", ...(past ? [PAST] : []), ...key.map(String)],
       { revalidate: ttl },
     )();
-  } catch {
+  } catch (e) {
+    if (e instanceof Uncached) return { v: e.v as T };
     return null;
   }
 }

@@ -31,6 +31,25 @@ export function isKnownSeason(season: number): boolean {
   return Object.prototype.hasOwnProperty.call(SEASON_NAMES, season);
 }
 
+/** Seasons whose qualification rankings were by total score, not ranking points
+ *  (ULTIMATE GOAL and FREIGHT FRENZY), so seed and RP predictions don't apply. */
+export function rankedByRp(season: number): boolean {
+  return season !== 2020 && season !== 2021;
+}
+
+/** What a season's ratings leave out: remote events were single-team matches,
+ *  which EPA/OPR (2v2 alliance ratings) can't use. */
+export function ratingsCoverageNote(season: number): string | null {
+  if (season === 2020) return "Most of 2020–21 was played remotely as single-team matches, which aren't rated, so ratings cover only the in-person events.";
+  if (season === 2021) return "Remote events (about 1 in 6 that season) were single-team matches and aren't rated.";
+  return null;
+}
+
+/** Every season with data, newest first. */
+export function allSeasons(): number[] {
+  return Object.keys(SEASON_NAMES).map(Number).sort((a, b) => b - a);
+}
+
 export function pastSeasons(): number[] {
   return Object.keys(SEASON_NAMES).map(Number).filter((s) => s < CURRENT_SEASON);
 }

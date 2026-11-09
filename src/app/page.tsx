@@ -1,13 +1,11 @@
 import Link from "next/link";
-import SearchBar from "@/components/SearchBar";
+import StarredTeams from "@/components/StarredTeams";
+import StarredRegion from "@/components/StarredRegion";
 import { getSeasonSnapshot, getWorldRecord } from "@/lib/ftc/queries";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
+import { getRegions } from "@/lib/rankings";
 import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
 import { formatDate } from "@/lib/format";
-
-// Regenerate at most once a minute; each regeneration also ticks the
-// auto-refresh, so the snapshot/world-record track the store closely.
-export const revalidate = 60;
 
 const SEASON_TITLE = `${seasonName(CURRENT_SEASON)} · ${seasonLabel(CURRENT_SEASON)}`;
 
@@ -136,52 +134,13 @@ async function WorldRecord() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
   scheduleAutoRefresh(CURRENT_SEASON); // post-response staleness check (never blocks)
+  const regions = await getRegions(CURRENT_SEASON).catch(() => []); // cached season metadata
   return (
     <div>
-      {/* Hero */}
-      <section className="relative mx-auto max-w-[1240px] overflow-hidden px-8 pb-7 pt-24 text-center">
-        <div
-          className="hero-dots pointer-events-none absolute inset-0 z-0 opacity-[0.55]"
-          style={{
-            WebkitMaskImage:
-              "radial-gradient(560px 360px at 50% 6%, #000 0%, transparent 72%)",
-            maskImage:
-              "radial-gradient(560px 360px at 50% 6%, #000 0%, transparent 72%)",
-          }}
-        />
-        <div className="relative z-[1]">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#232323] bg-[#0a0a0a] px-4 py-[7px] font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal" />
-            Powered by the official FIRST API
-          </span>
-          <h1 className="font-display mx-auto mt-[30px] max-w-[900px] text-balance text-[clamp(42px,6.2vw,80px)] font-medium leading-[1.04] tracking-[-0.01em] text-[#f7f8fa]">
-            All your FTC scouting,
-            <br />
-            <span className="italic text-accent">one dashboard.</span>
-          </h1>
-          <p className="mx-auto mt-6 max-w-[560px] text-balance text-[18px] leading-[1.55] text-muted">
-            Search any FIRST Tech Challenge team or event for EPA, OPR, win
-            predictions, strength of schedule, and rankings — plus a full in-event
-            scouting workspace for your team.
-          </p>
-          <div className="mx-auto mt-[34px] max-w-[520px]">
-            <SearchBar size="lg" />
-          </div>
-          <p className="mt-[18px] text-[13px] text-[#6b6f78]">
-            Try{" "}
-            <Link href="/teams/641" className="text-accent no-underline hover:underline">
-              team 641
-            </Link>
-            , search an event, or browse the{" "}
-            <Link href="/rankings" className="text-accent no-underline hover:underline">
-              full rankings
-            </Link>
-            .
-          </p>
-        </div>
-      </section>
+      <StarredRegion regions={regions} />
+      <StarredTeams />
 
       <StatStrip />
       <WorldRecord />

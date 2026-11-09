@@ -4,6 +4,8 @@ import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Heartbeat from "@/components/Heartbeat";
+import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import ConvexClientProvider from "@/components/ConvexClientProvider";
 
 const grotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -63,10 +65,17 @@ export default function RootLayout({
       className={`${grotesk.variable} ${spaceMono.variable} ${newsreader.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
-        <Heartbeat />
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        {/* Site-wide sign-in (stars on public pages, the /scout workspaces). Reads
+            the auth cookie, so pages render per request; their FIRST and Convex
+            data stays cached. The middleware exchanges OAuth codes, only on /sign-in. */}
+        <ConvexAuthNextjsServerProvider shouldHandleCode={false}>
+          <ConvexClientProvider>
+            <Heartbeat />
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </ConvexClientProvider>
+        </ConvexAuthNextjsServerProvider>
       </body>
     </html>
   );

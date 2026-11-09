@@ -7,10 +7,18 @@ import {
   type SortKey,
   type TeamRanking,
 } from "@/lib/rankings";
-import { CURRENT_SEASON, seasonName, seasonLabel } from "@/lib/season";
+import {
+  CURRENT_SEASON,
+  allSeasons,
+  parseSeasonParam,
+  ratingsCoverageNote,
+  seasonName,
+  seasonLabel,
+} from "@/lib/season";
 import { fmt } from "@/lib/format";
 import { scheduleAutoRefresh } from "@/lib/data/autoRefresh";
 import RegionSelect from "@/components/RegionSelect";
+import RegionStarButton from "@/components/RegionStarButton";
 
 export const metadata: Metadata = {
   title: "Rankings",
@@ -37,6 +45,7 @@ interface Props {
     dir?: string;
     region?: string;
     page?: string;
+    season?: string;
   }>;
 }
 
@@ -46,12 +55,13 @@ export default async function RankingsPage({ searchParams }: Props) {
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const region = sp.region ?? "";
   const page = Math.max(1, Number(sp.page) || 1);
+  const season = parseSeasonParam(sp.season);
 
   scheduleAutoRefresh(CURRENT_SEASON); // post-response staleness check (never blocks)
 
   // Accessors are backend-aware (Convex or bundled files) and self-loading.
-  const regions = await getRegions(CURRENT_SEASON);
-  const { rows, total, page: curPage, pages } = await queryRankings(CURRENT_SEASON, {
+  const regions = await getRegions(season);
+  const { rows, total, page: curPage, pages } = await queryRankings(season, {
     region: region || null,
     sort,
     dir,
@@ -61,6 +71,7 @@ export default async function RankingsPage({ searchParams }: Props) {
 
   const qs = (over: Record<string, string | number>) => {
     const p = new URLSearchParams();
+    if (season !== CURRENT_SEASON) p.set("season", String(season));
     p.set("sort", String(over.sort ?? sort));
     p.set("dir", String(over.dir ?? dir));
     if (region) p.set("region", region);
@@ -104,15 +115,32 @@ export default async function RankingsPage({ searchParams }: Props) {
             Rankings
           </h1>
           <p className="mt-2 text-[14px] text-muted">
-            {seasonName(CURRENT_SEASON)} · {seasonLabel(CURRENT_SEASON)} ·{" "}
+            {seasonName(season)} · {seasonLabel(season)} ·{" "}
             {total.toLocaleString()} teams {region ? `in ${region}` : "worldwide"}
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {allSeasons().map((s) => (
+              <Link
+                key={s}
+                href={s === CURRENT_SEASON ? "/rankings" : `/rankings?season=${s}`}
+                className="rounded-[10px] px-3 py-1.5 text-[13px] transition-colors"
+                style={
+                  s === season
+                    ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
+                    : { border: "1px solid #232323", color: "#9aa0aa" }
+                }
+              >
+                {seasonLabel(s)}
+              </Link>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-[#6b6f78]">
             Region
           </span>
           <RegionSelect regions={regions} value={region} />
+          {region && season === CURRENT_SEASON && <RegionStarButton region={region} />}
         </div>
       </div>
 
@@ -155,7 +183,7 @@ export default async function RankingsPage({ searchParams }: Props) {
                   </td>
                   <td className="px-4 py-[11px]">
                     <Link
-                      href={`/teams/${r.number}?season=${CURRENT_SEASON}`}
+                      href={`/teams/${r.number}?season=${season}`}
                       className="no-underline hover:text-accent"
                     >
                       <span className="font-mono text-[#6b6f78]">{r.number}</span>{" "}
@@ -171,8 +199,8 @@ export default async function RankingsPage({ searchParams }: Props) {
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-[#1a1a1a] px-4 py-[13px] text-[12px] text-[#6b6f78]">
           <span>
-            EPA &amp; no-penalty OPR computed by TaterScout from {CURRENT_SEASON}{" "}
-            match data.
+            EPA &amp; no-penalty OPR computed by TaterScout from {seasonLabel(season)}{" "}
+            match data.{ratingsCoverageNote(season) ? ` ${ratingsCoverageNote(season)}` : ""}
           </span>
           <div className="flex items-center gap-3">
             <span className="font-mono">

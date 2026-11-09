@@ -81,9 +81,16 @@ function RpDots({ rp, side }: { rp: MatchBreakdown["rp"]; side: "red" | "blue" }
       {rp.map((c) => (
         <span
           key={c.label}
-          className="h-[5px] w-[5px] rounded-full border"
-          style={{ borderColor: c[side] ? color : "#3a3f48", background: c[side] ? color : "transparent" }}
-        />
+          aria-hidden
+          className="flex h-[16px] w-[16px] items-center justify-center rounded-full border font-mono text-[8px] font-bold leading-none"
+          style={{
+            borderColor: c[side] ? color : "#3a3f48",
+            background: c[side] ? color : "transparent",
+            color: c[side] ? "#fff" : "#5a5f68",
+          }}
+        >
+          {c.short}
+        </span>
       ))}
     </span>
   );
@@ -259,13 +266,13 @@ export default function MatchList({
             {tournamentLevelLabel(k)} <span className="text-[#3a3f48]">({ms.length})</span>
           </>
         );
-        // Qualification matches collapse to a dropdown (closed by default) to
-        // keep playoffs + results above the fold.
+        // Qualification matches sit in a dropdown, open by default, so a long
+        // list can be folded away to reach playoffs + results.
         if (k === "Quals" && focusTeam == null) {
           return (
             <Collapsible
               key={k}
-              defaultOpen={false}
+              defaultOpen
               gap="mb-2"
               header={
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">

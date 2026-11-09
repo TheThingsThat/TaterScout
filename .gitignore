@@ -48,3 +48,6 @@ next-env.d.ts
 # throwaway simulation teardown — deployed to Convex, never committed
 convex/_simCleanup.ts
 scripts/sim/
+
+# Past-season datasets (computed once, seeded to Convex; too large for git)
+/data/

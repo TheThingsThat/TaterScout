@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getEvent } from "@/lib/ftc/queries";
-import { seasonFull, isKnownSeason, isValidEventCode } from "@/lib/season";
+import { seasonFull, isKnownSeason, isValidEventCode, rankedByRp } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
 import { getRankingMap, getSeasonCyclePrior, getSimModel } from "@/lib/rankings";
 import { getEventStats } from "@/lib/eventStats";
@@ -150,7 +150,9 @@ export default async function EventPage({ params, searchParams }: Props) {
   const schedParam = (await searchParams).sched;
   const mode: "real" | "sim" =
     schedParam === "sim" ? "sim" : schedParam === "real" ? "real" : realAvailable ? "real" : "sim";
-  const canPredict = simTeams.length >= 6 && simTeams.some((t) => t.epa > 0);
+  const rated = simTeams.some((t) => t.epa > 0);
+  // Seed and playoff odds assume RP rankings; 2020-21 ranked by total score.
+  const canPredict = simTeams.length >= 6 && rated && rankedByRp(season);
   const simResult = canPredict
     ? simulateEvent({
         teams: simTeams,
@@ -199,7 +201,7 @@ export default async function EventPage({ params, searchParams }: Props) {
   const showAccuracy = accTotal >= 4;
 
   // --- Strength of schedule (Statbotics-style; needs a released real schedule) ---
-  const canSos = realAvailable && teamNums.length >= 6;
+  const canSos = realAvailable && teamNums.length >= 6 && rated && rankedByRp(season);
   const sosPre = canSos
     ? computeSos({ teams: teamNums, epaOf: (i) => preEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
     : null;

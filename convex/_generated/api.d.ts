@@ -24,6 +24,7 @@ import type * as site_eventStats from "../site/eventStats.js";
 import type * as site_rankings from "../site/rankings.js";
 import type * as site_search from "../site/search.js";
 import type * as site_trajectories from "../site/trajectories.js";
+import type * as stars from "../stars.js";
 import type * as sync_lib from "../sync/lib.js";
 import type * as sync_state from "../sync/state.js";
 import type * as sync_write from "../sync/write.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   "site/rankings": typeof site_rankings;
   "site/search": typeof site_search;
   "site/trajectories": typeof site_trajectories;
+  stars: typeof stars;
   "sync/lib": typeof sync_lib;
   "sync/state": typeof sync_state;
   "sync/write": typeof sync_write;

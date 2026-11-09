@@ -62,7 +62,7 @@ export default function DemoBanner() {
     try {
       await endDemo({});
       await signOut();
-      router.replace("/scout/sign-in");
+      router.replace("/sign-in?next=/scout");
     } finally {
       setEnding(false);
     }

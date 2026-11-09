@@ -118,7 +118,7 @@ export interface MatchBreakdown {
   foulPointsBlue: number;
   foulsRed: string; // "major / minor" committed BY this alliance
   foulsBlue: string;
-  rp: { label: string; red: boolean; blue: boolean }[];
+  rp: { label: string; short: string; red: boolean; blue: boolean }[];
   rpTotalRed: number;
   rpTotalBlue: number;
 }
