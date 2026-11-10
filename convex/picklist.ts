@@ -17,7 +17,7 @@ function dominant(counts: Record<string, number>, priority: string[]): string | 
 }
 
 /** Per-team aggregates for the filter/sort ranking view: imported ratings plus
- *  the scouted-label facets (dominant value + raw counts) and pit capability. */
+ *  the scouted-label facets (dominant value + raw counts). */
 export const teams = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
@@ -31,11 +31,6 @@ export const teams = query({
       .query("matchReports")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
       .collect();
-    const pits = await ctx.db
-      .query("pitReports")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .collect();
-    const pitByTeam = new Map(pits.map((p) => [p.teamNumber, p]));
 
     type Agg = {
       count: number;
@@ -58,7 +53,6 @@ export const teams = query({
 
     return teamRows.map((t) => {
       const a = agg.get(t.teamNumber);
-      const p = pitByTeam.get(t.teamNumber);
       return {
         teamNumber: t.teamNumber,
         name: t.name,
@@ -75,18 +69,6 @@ export const teams = query({
         autoCounts: a?.auto ?? {},
         teleopCounts: a?.teleop ?? {},
         endgameCounts: a?.endgame ?? {},
-        pit: p
-          ? {
-              farAuto: p.farAuto,
-              nearAuto: p.nearAuto,
-              farTele: p.farTele,
-              nearTele: p.nearTele,
-              canPark: p.canPark,
-              canTilt: p.canTilt,
-              canClimb: p.canClimb,
-              robotStatus: p.robotStatus,
-            }
-          : null,
       };
     });
   },

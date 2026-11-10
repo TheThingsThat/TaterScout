@@ -16,10 +16,10 @@ const HEADING = "mb-3.5 font-mono text-[11px] uppercase tracking-[0.14em] text-m
 const DAY = 86_400_000;
 
 const DOT: Record<Level, string> = {
-  ok: "#3ecf76",
-  degraded: "#ffc24b",
-  down: "#ff5d6c",
-  info: "#6b6f78",
+  ok: "var(--opr)",
+  degraded: "var(--gold)",
+  down: "var(--red)",
+  info: "var(--dim)",
 };
 const LABEL: Record<Level, string> = {
   ok: "Operational",
@@ -40,11 +40,11 @@ function Dot({ level }: { level: Level }) {
 
 /** "12 min ago · 3:45 PM" in the viewer's zone; dates instead of clocks past a day. */
 function When({ ms, now }: { ms: number | null; now: number }) {
-  if (!ms) return <span className="text-[#6b6f78]">never</span>;
+  if (!ms) return <span className="text-dim">never</span>;
   return (
     <>
       {formatAgo(ms, now)}
-      <span className="text-[#6b6f78]">
+      <span className="text-dim">
         {" · "}
         <LocalClock ms={ms} date={Math.abs(now - ms) >= DAY} />
       </span>
@@ -54,11 +54,11 @@ function When({ ms, now }: { ms: number | null; now: number }) {
 
 function Row({ name, value, note }: { name: string; value: React.ReactNode; note: string }) {
   return (
-    <div className="grid gap-1 border-t border-[#141414] px-5 py-3.5 first:border-t-0 sm:grid-cols-[220px_1fr] sm:gap-4">
-      <div className="text-[14px] font-medium text-[#e7eaf0]">{name}</div>
+    <div className="grid gap-1 border-t border-line px-5 py-3.5 first:border-t-0 sm:grid-cols-[220px_1fr] sm:gap-4">
+      <div className="text-[14px] font-medium text-body">{name}</div>
       <div>
-        <div className="text-[14px] tabular-nums text-[#e7eaf0]">{value}</div>
-        <div className="mt-0.5 text-[12px] text-[#6b6f78]">{note}</div>
+        <div className="text-[14px] tabular-nums text-body">{value}</div>
+        <div className="mt-0.5 text-[12px] text-dim">{note}</div>
       </div>
     </div>
   );
@@ -78,38 +78,41 @@ export default async function StatusPage() {
     <div className="mx-auto max-w-[900px] space-y-7 px-5 pb-6 pt-10 sm:px-8">
       <LiveRefresh enabled />
       <div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-dim">
           {seasonFull(CURRENT_SEASON)}
         </div>
-        <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+        <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-heading">
           Status
         </h1>
       </div>
 
       <div
         className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border px-5 py-4"
-        style={{ borderColor: `${DOT[level]}55`, background: `${DOT[level]}12` }}
+        style={{
+          borderColor: `color-mix(in srgb, ${DOT[level]} 33%, transparent)`,
+          background: `color-mix(in srgb, ${DOT[level]} 7%, transparent)`,
+        }}
       >
         <div className="flex items-center gap-3">
           <Dot level={level} />
-          <span className="text-[17px] font-semibold text-[#f7f8fa]">{BANNER[level]}</span>
+          <span className="text-[17px] font-semibold text-heading">{BANNER[level]}</span>
         </div>
-        <span className="text-[12px] text-[#8a90a0]">
+        <span className="text-[12px] text-muted">
           Checked {formatAgo(probes.checkedAt, now)} · rechecked every 2 minutes
         </span>
       </div>
 
       <section>
         <h2 className={HEADING}>Systems</h2>
-        <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
           {checks.map((c) => (
             <div
               key={c.name}
-              className="flex items-start justify-between gap-4 border-t border-[#141414] px-5 py-3.5 first:border-t-0"
+              className="flex items-start justify-between gap-4 border-t border-line px-5 py-3.5 first:border-t-0"
             >
               <div className="min-w-0">
-                <div className="text-[14px] font-medium text-[#e7eaf0]">{c.name}</div>
-                <div className="mt-0.5 text-[12px] text-[#8a90a0]">{c.summary}</div>
+                <div className="text-[14px] font-medium text-body">{c.name}</div>
+                <div className="mt-0.5 text-[12px] text-muted">{c.summary}</div>
               </div>
               <span className="flex shrink-0 items-center gap-2 text-[12px]" style={{ color: DOT[c.level] }}>
                 <Dot level={c.level} />
@@ -122,7 +125,7 @@ export default async function StatusPage() {
 
       <section>
         <h2 className={HEADING}>Data freshness</h2>
-        <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
           <Row
             name="Live scores & schedules"
             value={first.level === "down" ? "Unavailable" : "Live from FIRST"}
@@ -174,7 +177,7 @@ export default async function StatusPage() {
         </div>
       </section>
 
-      <p className="text-[12px] text-[#6b6f78]">
+      <p className="text-[12px] text-dim">
         Data syncs while people use the site, so a quiet stretch with no visitors means no sync until the next
         page view; this page counts as one.{version ? ` Version ${version}.` : ""}
       </p>

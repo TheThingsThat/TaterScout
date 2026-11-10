@@ -25,7 +25,7 @@ export default function PredictScheduleToggle({
   ];
 
   return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-[#232323]">
+    <div className="inline-flex overflow-hidden rounded-lg border border-border-strong">
       {opts.map((o) => (
         <button
           key={o.v}
@@ -35,7 +35,7 @@ export default function PredictScheduleToggle({
           style={
             value === o.v
               ? { background: "var(--accent)", color: "#fff" }
-              : { background: "transparent", color: "#9aa0aa" }
+              : { background: "transparent", color: "var(--muted)" }
           }
         >
           {o.label}

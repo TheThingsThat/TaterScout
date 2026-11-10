@@ -37,7 +37,7 @@ function Row({
               prefetch={false}
               href={`/teams/${t.number}?season=${season}`}
               className="no-underline hover:text-foreground"
-              style={{ color: captain ? accent : "#9aa0aa", fontWeight: captain ? 600 : 400 }}
+              style={{ color: captain ? accent : "var(--muted)", fontWeight: captain ? 600 : 400 }}
             >
               <span className="font-mono text-[12px] opacity-70">{t.number}</span> {t.name}
               {captain && (
@@ -68,15 +68,15 @@ export default function EventResults({
   season: number;
 }) {
   return (
-    <div className="divide-y divide-[#141414] overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+    <div className="divide-y divide-line overflow-hidden rounded-2xl border border-border bg-surface">
       {winner.length > 0 && (
-        <Row label="Winning Alliance" accent="#ffc24b" bg="rgba(255,194,75,0.12)" teams={winner} captainTag="WAC" season={season} />
+        <Row label="Winning Alliance" accent="var(--gold)" bg="color-mix(in srgb, var(--gold) 12%, transparent)" teams={winner} captainTag="WAC" season={season} />
       )}
       {finalist.length > 0 && (
-        <Row label="Finalist Alliance" accent="#b6bcc6" bg="rgba(182,188,198,0.1)" teams={finalist} captainTag="FAC" season={season} />
+        <Row label="Finalist Alliance" accent="var(--body)" bg="color-mix(in srgb, var(--body) 10%, transparent)" teams={finalist} captainTag="FAC" season={season} />
       )}
       {inspire && (
-        <Row label="Inspire" accent="#ff5d6c" bg="rgba(205,14,14,0.14)" teams={[inspire]} season={season} />
+        <Row label="Inspire" accent="var(--red)" bg="color-mix(in srgb, var(--accent) 14%, transparent)" teams={[inspire]} season={season} />
       )}
     </div>
   );

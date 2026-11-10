@@ -21,10 +21,10 @@ export default function NavLinks() {
             key={it.href}
             href={it.href}
             className="flex items-center gap-1.5 text-[14px] transition-colors hover:text-foreground"
-            style={{ color: active ? "#f4f5f7" : "#9aa0aa" }}
+            style={{ color: active ? "var(--foreground)" : "var(--muted)" }}
           >
             {it.label}{" "}
-            <span className="hidden text-[10px] text-[#3a3f48] sm:inline">✦</span>
+            <span className="hidden text-[10px] text-faint sm:inline">✦</span>
           </Link>
         );
       })}

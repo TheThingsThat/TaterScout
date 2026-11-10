@@ -86,13 +86,13 @@ export default function DemoBanner() {
         <span className="text-muted">
           Everything here is deleted shortly after you close this tab.
         </span>
-        <span className="text-[#6b6f78]">
+        <span className="text-dim">
           {status.workspacesUsed} / {status.maxWorkspaces} workspaces
         </span>
         <button
           onClick={onEnd}
           disabled={ending}
-          className="ml-auto rounded-md border border-[#232323] px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground disabled:opacity-60"
+          className="ml-auto rounded-md border border-border-strong px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:opacity-60"
         >
           {ending ? "Ending…" : "End demo"}
         </button>
@@ -105,7 +105,7 @@ export default function DemoBanner() {
           aria-labelledby="demo-notice-title"
           className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-5"
         >
-          <div className="w-full max-w-[420px] rounded-2xl border border-[#232323] bg-surface p-6">
+          <div className="w-full max-w-[420px] rounded-2xl border border-border-strong bg-surface p-6">
             <h2 id="demo-notice-title" className="text-[18px] font-semibold">
               You&apos;re in demo mode
             </h2>
@@ -114,7 +114,7 @@ export default function DemoBanner() {
               reports, and assignments are all deleted from the server. Nothing here
               is saved. End demo deletes it right away.
             </p>
-            <p className="mt-2 text-[13px] leading-relaxed text-[#6b6f78]">
+            <p className="mt-2 text-[13px] leading-relaxed text-dim">
               You can create up to {status.maxWorkspaces} workspaces. Want to keep your
               work? Create a free account instead.
             </p>

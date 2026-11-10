@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { formatDate } from "@/lib/format";
 import type { TrajPoint, EventSegment } from "@/lib/trajectory";
 
 type Key = "epa" | "epaAuto" | "epaTele" | "opr" | "oprAuto" | "oprTele";
 
-const EPA = "#2f8bff";
-const OPR = "#3ecf76";
+const EPA = "var(--epa)";
+const OPR = "var(--opr)";
 
 const SERIES: {
   key: Key;
@@ -24,11 +24,11 @@ const SERIES: {
   { key: "oprTele", label: "OPR TeleOp", color: OPR, dash: "1.5 3", width: 1.5 },
 ];
 
-const W = 1000;
-const H = 420;
-const PAD = { l: 40, r: 14, t: 14, b: 64 };
-const PLOT_W = W - PAD.l - PAD.r;
-const PLOT_H = H - PAD.t - PAD.b;
+// Drawn in CSS pixels at the chart's real width (measured below), so labels stay
+// readable on a phone instead of shrinking with a scaled-down fixed canvas.
+const SSR_W = 1000; // until measured: the desktop layout, as before
+const MONO = "var(--font-spacemono), monospace";
+const CHAR_W = 6.6; // Space Mono advance at 11px, for fitting labels
 
 const subscribe = () => () => {};
 
@@ -51,6 +51,19 @@ export default function TrajectoryChart({
   const [visible, setVisible] = useState<Set<Key>>(new Set(["epa", "opr"]));
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [W, setW] = useState(SSR_W);
+  useEffect(() => {
+    const el = svgRef.current?.parentElement;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(240, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const narrow = W < 640;
+  const H = narrow ? 240 : Math.round(W * 0.42);
+  const PAD = narrow ? { l: 34, r: 8, t: 10, b: 44 } : { l: 40, r: 14, t: 14, b: 64 };
+  const PLOT_W = W - PAD.l - PAD.r;
+  const PLOT_H = H - PAD.t - PAD.b;
   // Match dates in the viewer's zone (a US evening match is already the next day
   // in UTC); SSR and hydration use UTC so they match, then the client swaps.
   const isClient = useSyncExternalStore(subscribe, () => true, () => false);
@@ -85,8 +98,10 @@ export default function TrajectoryChart({
   const yAt = (v: number) => PAD.t + PLOT_H - ((v - lo) / (hi - lo)) * PLOT_H;
 
   const ticks: number[] = [];
+  // Whole numbers unless the range is small: keeps labels short enough for the axis gutter.
+  const tickScale = hi - lo > 10 ? 1 : 10;
   for (let k = 0; k <= 3; k++) {
-    ticks.push(Math.round((lo + ((hi - lo) * k) / 3) * 10) / 10);
+    ticks.push(Math.round((lo + ((hi - lo) * k) / 3) * tickScale) / tickScale);
   }
 
   const halfStep = n > 1 ? step / 2 : PLOT_W / 2;
@@ -128,7 +143,7 @@ export default function TrajectoryChart({
   const hp = hover !== null ? points[hover] : null;
 
   return (
-    <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+    <div className="rounded-2xl border border-border bg-surface p-[18px]">
       <div className="mb-3.5 flex flex-wrap gap-2">
         {SERIES.map((s) => {
           const on = visible.has(s.key);
@@ -139,8 +154,8 @@ export default function TrajectoryChart({
               className="flex items-center gap-1.5 rounded-lg px-[9px] py-[5px] text-[11px] transition-colors"
               style={
                 on
-                  ? { background: "#161616", border: "1px solid #262626", color: "#f4f5f7" }
-                  : { background: "transparent", border: "1px solid transparent", color: "#6b6f78" }
+                  ? { background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }
+                  : { background: "transparent", border: "1px solid transparent", color: "var(--dim)" }
               }
             >
               <svg width="16" height="6">
@@ -149,7 +164,7 @@ export default function TrajectoryChart({
                   y1="3"
                   x2="16"
                   y2="3"
-                  stroke={s.color}
+                  style={{ stroke: s.color }}
                   strokeWidth={s.width}
                   strokeDasharray={s.dash}
                   opacity={on ? 1 : 0.4}
@@ -178,21 +193,30 @@ export default function TrajectoryChart({
           const left = Math.max(PAD.l, xAt(seg.start) - halfStep);
           const right = Math.min(W - PAD.r, xAt(seg.end) + halfStep);
           const mid = (left + right) / 2;
+          const room = right - left;
+          const date = fmtDate(points[seg.start].time);
+          // Only label an event whose band fits the text; the hover readout names it anyway.
+          const showCode = room >= seg.code.length * CHAR_W + 6;
+          const showDate = room >= date.length * CHAR_W * 0.9 + 6;
           return (
             <g key={`${seg.code}-${idx}`}>
               <rect
                 x={left}
                 y={PAD.t}
-                width={Math.max(0, right - left)}
+                width={Math.max(0, room)}
                 height={PLOT_H}
-                fill={idx % 2 ? "rgba(255,255,255,0.03)" : "transparent"}
+                style={{ fill: idx % 2 ? "color-mix(in srgb, var(--foreground) 3%, transparent)" : "transparent" }}
               />
-              <text x={mid} y={H - PAD.b + 20} textAnchor="middle" fill="#6b6f78" fontSize="11" fontFamily="var(--font-spacemono), monospace">
-                {seg.code}
-              </text>
-              <text x={mid} y={H - PAD.b + 34} textAnchor="middle" fill="#52565e" fontSize="10" fontFamily="var(--font-spacemono), monospace">
-                {fmtDate(points[seg.start].time)}
-              </text>
+              {showCode && (
+                <text x={mid} y={H - PAD.b + 18} textAnchor="middle" className="fill-dim" fontSize="11" fontFamily={MONO}>
+                  {seg.code}
+                </text>
+              )}
+              {showDate && (
+                <text x={mid} y={H - PAD.b + 32} textAnchor="middle" className="fill-dim" fontSize="10" fontFamily={MONO}>
+                  {date}
+                </text>
+              )}
             </g>
           );
         })}
@@ -208,7 +232,7 @@ export default function TrajectoryChart({
               y1={PAD.t}
               x2={xAt(i)}
               y2={PAD.t + PLOT_H}
-              stroke="#6b6f78"
+              className="stroke-dim"
               strokeWidth="1.5"
               strokeDasharray="3 3"
               opacity={0.5}
@@ -229,7 +253,7 @@ export default function TrajectoryChart({
               y={PAD.t}
               width={Math.max(1, right - left)}
               height={PLOT_H}
-              fill="var(--gold)"
+              style={{ fill: "var(--gold)" }}
               opacity={0.08}
             />
           );
@@ -237,8 +261,8 @@ export default function TrajectoryChart({
 
         {ticks.map((t) => (
           <g key={`t-${t}`}>
-            <line x1={PAD.l} y1={yAt(t)} x2={W - PAD.r} y2={yAt(t)} stroke="#1f1f1f" strokeWidth="1" />
-            <text x={PAD.l - 6} y={yAt(t) + 3} textAnchor="end" fill="#52565e" fontSize="10" fontFamily="var(--font-spacemono), monospace">
+            <line x1={PAD.l} y1={yAt(t)} x2={W - PAD.r} y2={yAt(t)} className="stroke-border" strokeWidth="1" />
+            <text x={PAD.l - 6} y={yAt(t) + 3} textAnchor="end" className="fill-dim" fontSize="10" fontFamily={MONO}>
               {t}
             </text>
           </g>
@@ -249,7 +273,7 @@ export default function TrajectoryChart({
             key={s.key}
             d={pathFor(s.key)}
             fill="none"
-            stroke={s.color}
+            style={{ stroke: s.color }}
             strokeWidth={s.width}
             strokeDasharray={s.dash}
             strokeLinejoin="round"
@@ -259,11 +283,11 @@ export default function TrajectoryChart({
 
         {hp && (
           <>
-            <line x1={xAt(hp.i)} y1={PAD.t} x2={xAt(hp.i)} y2={PAD.t + PLOT_H} stroke="#f4f5f7" strokeWidth="1" opacity={0.3} />
+            <line x1={xAt(hp.i)} y1={PAD.t} x2={xAt(hp.i)} y2={PAD.t + PLOT_H} className="stroke-foreground" strokeWidth="1" opacity={0.3} />
             {SERIES.filter((s) => visible.has(s.key)).map((s) => {
               const v = hp[s.key];
               if (v === null || v === undefined) return null;
-              return <circle key={s.key} cx={xAt(hp.i)} cy={yAt(v)} r="3.5" fill={s.color} />;
+              return <circle key={s.key} cx={xAt(hp.i)} cy={yAt(v)} r="3.5" style={{ fill: s.color }} />;
             })}
           </>
         )}
@@ -281,12 +305,12 @@ export default function TrajectoryChart({
                 )}
               </span>
               {hp.noShow && (
-                <span className="text-[10px] font-normal text-[#6b6f78]">
+                <span className="text-[10px] font-normal text-dim">
                   not rated · alliance a robot short
                 </span>
               )}
             </span>
-            <span className="text-[#6b6f78]">
+            <span className="text-dim">
               {hp.eventCode} · {fmtDate(hp.time)}
             </span>
             {SERIES.filter((s) => visible.has(s.key)).map((s) => {
@@ -299,7 +323,7 @@ export default function TrajectoryChart({
             })}
           </div>
         ) : (
-          <span className="text-[#6b6f78]">
+          <span className="text-dim">
             Hover the chart for per-match values. Grey bands group events; gold = playoffs.
           </span>
         )}

@@ -53,7 +53,7 @@ export function hasEnded(t: TeamSummary, now: number): boolean {
 
 function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: number }) {
   const e = t.next;
-  if (!e) return <span className="text-[13px] text-[#6b6f78]">No upcoming events</span>;
+  if (!e) return <span className="text-[13px] text-dim">No upcoming events</span>;
   const live = isLive(e, now);
   // Over but not yet refetched (or the refetch failed): no "Starts in 1m" countdown.
   const ended = e.endMs !== null && now >= e.endMs;
@@ -63,12 +63,12 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
       <Link
         prefetch={false}
         href={`/events/${season}/${e.code}`}
-        className="block truncate text-[14px] text-[#e7eaf0] no-underline hover:text-foreground hover:underline"
+        className="block truncate text-[14px] text-body no-underline hover:text-foreground hover:underline"
         title={e.name}
       >
         {e.name}
       </Link>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-[#8a90a0]">
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted">
         <span>
           {venueDate(e.startMs, e.start)}
           {e.end && e.end !== e.start ? ` – ${venueDate(e.endMs, e.end)}` : ""}
@@ -79,7 +79,7 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Live now
           </span>
         ) : !ended && e.startMs !== null ? (
-          <span className="rounded-full bg-[#141414] px-2 py-0.5 font-mono text-[11px] text-[#cfd3da]">
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-body">
             Starts {countdown(e.startMs, now)}
           </span>
         ) : null}
@@ -91,9 +91,9 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
 function Stat({ label, value, rank, wide }: { label: string; value: string; rank?: number | null; wide?: boolean }) {
   return (
     <div className={`${wide ? "w-[96px]" : "w-[76px]"} text-left md:text-right`}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">{label}</div>
-      <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[#f7f8fa]">{value}</div>
-      {rank != null && <div className="text-[11px] tabular-nums text-[#6b6f78]">#{rank.toLocaleString()}</div>}
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">{label}</div>
+      <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-heading">{value}</div>
+      {rank != null && <div className="text-[11px] tabular-nums text-dim">#{rank.toLocaleString()}</div>}
     </div>
   );
 }
@@ -116,9 +116,9 @@ export default function TeamTable({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-[#1a1a1a] bg-surface">
+    <div className="overflow-hidden rounded-[20px] border border-border bg-surface">
       <div
-        className={`hidden ${COLS} gap-6 border-b border-[#141414] px-5 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78] md:grid`}
+        className={`hidden ${COLS} gap-6 border-b border-line px-5 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-dim md:grid`}
       >
         <span>Team</span>
         <span>Next event</span>
@@ -130,16 +130,16 @@ export default function TeamTable({
       {rows.map((t) => (
         <div
           key={t.number}
-          className={`grid gap-3 border-t border-[#141414] px-5 py-4 first:border-t-0 ${COLS} md:items-center md:gap-6`}
+          className={`grid gap-3 border-t border-line px-5 py-4 first:border-t-0 ${COLS} md:items-center md:gap-6`}
         >
           <div className="flex min-w-0 items-center gap-3">
             <StarButton team={t.number} compact />
             <Link prefetch={false} href={`/teams/${t.number}`} className="min-w-0 no-underline">
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-[14px] font-bold text-accent">{t.number}</span>
-                <span className="truncate text-[15px] font-medium text-[#f7f8fa] hover:underline">{t.name}</span>
+                <span className="truncate text-[15px] font-medium text-heading hover:underline">{t.name}</span>
               </div>
-              {t.region && <div className="mt-0.5 truncate text-[12px] text-[#6b6f78]">{t.region}</div>}
+              {t.region && <div className="mt-0.5 truncate text-[12px] text-dim">{t.region}</div>}
             </Link>
           </div>
           <NextEvent t={t} now={now} season={season ?? 0} />
@@ -157,7 +157,7 @@ export default function TeamTable({
         </div>
       ))}
       {footer && (
-        <div className="border-t border-[#141414] px-5 py-4 text-[13px] text-[#6b6f78] first:border-t-0">{footer}</div>
+        <div className="border-t border-line px-5 py-4 text-[13px] text-dim first:border-t-0">{footer}</div>
       )}
     </div>
   );

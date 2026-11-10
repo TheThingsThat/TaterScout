@@ -63,12 +63,15 @@ type Budget = { left: number };
 async function drain(
   ctx: MutationCtx,
   budget: Budget,
-  take: (n: number) => Promise<{ _id: Id<TableNames> }[]>,
+  take: (n: number) => Promise<{ _id: Id<TableNames>; photoId?: Id<"_storage"> }[]>,
 ): Promise<boolean> {
   if (budget.left <= 0) return false;
   const n = budget.left;
   const rows = await take(n);
-  for (const r of rows) await ctx.db.delete(r._id);
+  for (const r of rows) {
+    if (r.photoId) await ctx.storage.delete(r.photoId).catch(() => {}); // pit report's robot photo
+    await ctx.db.delete(r._id);
+  }
   budget.left -= rows.length;
   return rows.length < n;
 }
@@ -142,6 +145,7 @@ async function wipeDemoUser(
     for (const table of [
       "matchReports",
       "pitReports",
+      "pitAutos",
       "assignments",
       "teamEvents",
       "matches",

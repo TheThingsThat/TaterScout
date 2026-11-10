@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { pitView } from "./pit";
 import { requireMember } from "./lib";
 
 const byRank = (a: { rank?: number | null; teamNumber: number }, b: { rank?: number | null; teamNumber: number }) =>
@@ -119,7 +120,7 @@ export const detail = query({
 
     return {
       team,
-      pit,
+      pit: await pitView(ctx, pit),
       reports,
       averages: n
         ? {

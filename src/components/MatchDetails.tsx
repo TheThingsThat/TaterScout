@@ -19,10 +19,10 @@ function Row({
   strong?: boolean;
 }) {
   const note = (text?: string | null) =>
-    text ? <span className="mr-1.5 text-[10px] text-[#52565e]">{text}</span> : null;
+    text ? <span className="mr-1.5 text-[10px] text-dim">{text}</span> : null;
   const value = `py-[3px] text-right tabular-nums ${strong ? "font-semibold" : ""}`;
   return (
-    <tr className={strong ? "text-[#e7eaf0]" : "text-[#8a90a0]"}>
+    <tr className={strong ? "text-body" : "text-muted"}>
       <th scope="row" className={`py-[3px] text-left ${strong ? "font-semibold" : "pl-3 font-normal"}`}>
         {label}
       </th>
@@ -53,13 +53,13 @@ function BreakdownTable({
     ));
   const yes = (earned: boolean) => (earned ? "✓" : "–");
   return (
-    <div className="border-t border-[#141414] bg-[#0a0a0a] px-4 py-3">
+    <div className="border-t border-line bg-surface px-4 py-3">
       <table className="mx-auto w-full max-w-[420px] border-collapse text-[12px]">
         <thead>
           <tr className="font-mono text-[10px] uppercase tracking-[0.08em]">
             <th className="w-[46%]" />
-            <th className="pb-1 text-right font-bold text-[#ff5d6c]">Red</th>
-            <th className="pb-1 text-right font-bold text-[#4d8dff]">Blue</th>
+            <th className="pb-1 text-right font-bold text-red">Red</th>
+            <th className="pb-1 text-right font-bold text-blue">Blue</th>
           </tr>
         </thead>
         <tbody>

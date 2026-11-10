@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { fail, requireAdmin, checkLen, adminWorkspaceCount } from "./lib";
+import { fail, requireAdmin, checkLen, adminWorkspaceCount, deletePitReport } from "./lib";
 import { isDemoUser, MAX_DEMO_WORKSPACES, demoSessionFor, DEMO_TTL_MS } from "./demo";
 import type { Id } from "./_generated/dataModel";
 
@@ -122,7 +123,8 @@ async function clearScoutingData(ctx: MutationCtx, workspaceId: Id<"workspaces">
     .query("matches")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
     .collect();
-  for (const r of [...reports, ...pits, ...claims, ...assigns, ...shorts, ...teamRows, ...matchRows]) {
+  for (const p of pits) await deletePitReport(ctx, p);
+  for (const r of [...reports, ...claims, ...assigns, ...shorts, ...teamRows, ...matchRows]) {
     await ctx.db.delete(r._id);
   }
 }
@@ -133,13 +135,36 @@ export const remove = mutation({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
     await requireAdmin(ctx, workspaceId);
-    await clearScoutingData(ctx, workspaceId);
-    const members = await ctx.db
-      .query("members")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .collect();
-    for (const m of members) await ctx.db.delete(m._id);
-    await ctx.db.delete(workspaceId);
+    await deleteWorkspace(ctx, workspaceId);
+  },
+});
+
+async function deleteWorkspace(ctx: MutationCtx, workspaceId: Id<"workspaces">) {
+  await clearScoutingData(ctx, workspaceId);
+  const members = await ctx.db
+    .query("members")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const m of members) await ctx.db.delete(m._id);
+  await ctx.db.delete(workspaceId);
+}
+
+/**
+ * Delete every workspace of a season, one per run, rescheduling until none are
+ * left (each run stays well inside a transaction's limits). Operator-only: run
+ *   npx convex run workspaces:purgeSeason '{"season":2025}' [--prod]
+ */
+export const purgeSeason = internalMutation({
+  args: { season: v.number() },
+  handler: async (ctx, { season }) => {
+    // Workspaces are few and this runs by hand, so a scan beats a season index.
+    for await (const ws of ctx.db.query("workspaces")) {
+      if (ws.season !== season) continue;
+      await deleteWorkspace(ctx, ws._id);
+      await ctx.scheduler.runAfter(0, internal.workspaces.purgeSeason, { season });
+      return { deleted: ws.name, more: true };
+    }
+    return { deleted: null, more: false };
   },
 });
 

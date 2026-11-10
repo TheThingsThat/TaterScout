@@ -88,6 +88,5 @@ function build(
 export async function getTrajectory(season: number, team: number): Promise<Trajectory | null> {
   const r = await siteTrajectory(season, team);
   if (!r?.v) return null;
-  const raw = r.v.pointsJson ? JSON.parse(r.v.pointsJson) : (r.v.points ?? []);
-  return build(r.v.t0, r.v.events, raw as RawPoint[]);
+  return build(r.v.t0, r.v.events, JSON.parse(r.v.pointsJson) as RawPoint[]);
 }

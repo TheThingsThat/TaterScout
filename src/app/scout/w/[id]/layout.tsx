@@ -22,7 +22,7 @@ function Tabs({ id }: { id: Id<"workspaces"> }) {
     ...(isAdmin ? [{ href: `${base}/members`, label: "Members" }] : []),
   ];
   return (
-    <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-[#161616]">
+    <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
       {tabs.map((t) => {
         const active = t.exact ? path === t.href : path.startsWith(t.href);
         return (

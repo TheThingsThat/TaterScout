@@ -80,14 +80,14 @@ function passes(t: TeamRow, f: Filter): boolean {
 
 const ZONE_CLASS: Record<string, string> = {
   far: "bg-teal/15 text-teal",
-  near: "bg-[#2f8bff]/15 text-[#4d8dff]",
+  near: "bg-epa/15 text-blue",
   climb: "bg-teal/15 text-teal",
   tilt: "bg-gold/15 text-gold",
-  park: "bg-[#2f8bff]/15 text-[#4d8dff]",
-  none: "bg-[#161616] text-[#6b6f78]",
+  park: "bg-epa/15 text-blue",
+  none: "bg-surface-2 text-dim",
 };
 function Chip({ v }: { v: string | null }) {
-  if (!v) return <span className="text-[#3a3f48]">—</span>;
+  if (!v) return <span className="text-faint">—</span>;
   return <span className={`rounded px-1.5 py-0.5 text-[11px] ${ZONE_CLASS[v] ?? ""}`}>{v}</span>;
 }
 
@@ -130,21 +130,21 @@ function RankingView({ teams }: { teams: TeamRow[] }) {
     }
   }
 
-  const SELECT = "rounded-lg border border-[#232323] bg-surface px-2 py-1.5 text-[13px] outline-none focus:border-[#3a3a3a]";
+  const SELECT = "rounded-lg border border-border-strong bg-surface px-2 py-1.5 text-[13px] outline-none focus:border-border-hover";
 
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-3.5">
+      <div className="rounded-2xl border border-border bg-surface p-3.5">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Filters</span>
           {filters.length > 1 && (
-            <div className="flex rounded-lg border border-[#232323] p-0.5 text-[12px]">
+            <div className="flex rounded-lg border border-border-strong p-0.5 text-[12px]">
               {(["and", "or"] as const).map((c) => (
                 <button
                   key={c}
                   onClick={() => setCombine(c)}
-                  className={`rounded-md px-2.5 py-0.5 uppercase ${combine === c ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}
+                  className={`rounded-md px-2.5 py-0.5 uppercase ${combine === c ? "bg-surface-2 text-foreground" : "text-muted"}`}
                 >
                   {c}
                 </button>
@@ -205,12 +205,12 @@ function RankingView({ teams }: { teams: TeamRow[] }) {
             <option key={k} value={k}>{FIELD_LABEL[k]}</option>
           ))}
         </select>
-        <div className="flex rounded-lg border border-[#232323] p-0.5 text-[12px]">
+        <div className="flex rounded-lg border border-border-strong p-0.5 text-[12px]">
           {(["desc", "asc"] as const).map((d) => (
             <button
               key={d}
               onClick={() => setSortDir(d)}
-              className={`rounded-md px-2.5 py-1 ${sortDir === d ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}
+              className={`rounded-md px-2.5 py-1 ${sortDir === d ? "bg-surface-2 text-foreground" : "text-muted"}`}
             >
               {d === "desc" ? "↓ high" : "↑ low"}
             </button>
@@ -220,15 +220,15 @@ function RankingView({ teams }: { teams: TeamRow[] }) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="ts-scroll overflow-x-auto">
           <table className="w-full min-w-[30rem] border-collapse text-[13px]">
             <thead>
-              <tr className="border-b border-[#1f1f1f] text-[10px] uppercase tracking-[0.1em] text-[#6b6f78]">
+              <tr className="border-b border-border text-[10px] uppercase tracking-[0.1em] text-dim">
                 <th className="px-3 py-2.5 text-left font-mono">#</th>
                 <th className="px-3 py-2.5 text-left font-mono">Team</th>
-                <th className="px-2 py-2.5 text-right font-mono" style={{ color: "#2f8bff" }}>EPA</th>
-                <th className="px-2 py-2.5 text-right font-mono" style={{ color: "#3ecf76" }}>OPR</th>
+                <th className="px-2 py-2.5 text-right font-mono" style={{ color: "var(--epa)" }}>EPA</th>
+                <th className="px-2 py-2.5 text-right font-mono" style={{ color: "var(--opr)" }}>OPR</th>
                 <th className="px-2 py-2.5 text-center font-mono">Auto</th>
                 <th className="px-2 py-2.5 text-center font-mono">Tele</th>
                 <th className="px-2 py-2.5 text-center font-mono">End</th>
@@ -237,14 +237,14 @@ function RankingView({ teams }: { teams: TeamRow[] }) {
             </thead>
             <tbody>
               {ranked.map((t, i) => (
-                <tr key={t.teamNumber} className="border-b border-[#141414] last:border-0 hover:bg-[#101010]">
-                  <td className="px-3 py-2.5 font-mono text-[#6b6f78]">{i + 1}</td>
+                <tr key={t.teamNumber} className="border-b border-line last:border-0 hover:bg-hover">
+                  <td className="px-3 py-2.5 font-mono text-dim">{i + 1}</td>
                   <td className="px-3 py-2.5">
-                    <span className="font-mono text-[#6b6f78]">{t.teamNumber}</span>{" "}
-                    <span className="font-medium text-[#e7eaf0]">{t.name}</span>
+                    <span className="font-mono text-dim">{t.teamNumber}</span>{" "}
+                    <span className="font-medium text-body">{t.name}</span>
                   </td>
-                  <td className="px-2 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#2f8bff" }}>{fmt(t.epa)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: "#3ecf76" }}>{fmt(t.oprNp)}</td>
+                  <td className="px-2 py-2.5 text-right font-semibold tabular-nums" style={{ color: "var(--epa)" }}>{fmt(t.epa)}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: "var(--opr)" }}>{fmt(t.oprNp)}</td>
                   <td className="px-2 py-2.5 text-center"><Chip v={t.autoZone} /></td>
                   <td className="px-2 py-2.5 text-center"><Chip v={t.teleopZone} /></td>
                   <td className="px-2 py-2.5 text-center"><Chip v={t.endgame} /></td>
@@ -268,20 +268,20 @@ function SortableRow({ entry, index, onRemove }: { entry: ShortEntry; index: num
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className="flex items-center gap-2.5 rounded-lg border border-[#232323] bg-[#111] px-3 py-2.5"
+      className="flex items-center gap-2.5 rounded-lg border border-border-strong bg-input px-3 py-2.5"
     >
       <span
         {...attributes}
         {...listeners}
-        className="cursor-grab touch-none text-[#4a4f57] active:cursor-grabbing"
+        className="cursor-grab touch-none text-faint active:cursor-grabbing"
         title="Drag to reorder"
       >
         ⠿
       </span>
       <span className="w-6 text-center font-mono text-[12px] text-muted">{index + 1}</span>
-      <span className="font-mono text-[12px] text-[#6b6f78]">{entry.teamNumber}</span>
-      <span className="min-w-0 flex-1 truncate text-[13px] text-[#e7eaf0]">{entry.name}</span>
-      <span className="text-[12px] tabular-nums" style={{ color: "#2f8bff" }}>{fmt(entry.epa)}</span>
+      <span className="font-mono text-[12px] text-dim">{entry.teamNumber}</span>
+      <span className="min-w-0 flex-1 truncate text-[13px] text-body">{entry.name}</span>
+      <span className="text-[12px] tabular-nums" style={{ color: "var(--epa)" }}>{fmt(entry.epa)}</span>
       <button onClick={onRemove} className="text-[14px] text-muted hover:text-accent">✕</button>
     </div>
   );
@@ -320,10 +320,10 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Add a team by number or name…"
-          className="w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-[#3a3a3a]"
+          className="w-full rounded-xl border border-border-strong bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-border-hover"
         />
         {matches.length > 0 && (
-          <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-[#232323] bg-[#0c0c0c]">
+          <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border-strong bg-input">
             {matches.map((t) => (
               <button
                 key={t.teamNumber}
@@ -331,7 +331,7 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
                   await add({ workspaceId: id, teamNumber: t.teamNumber });
                   setQ("");
                 }}
-                className="flex w-full items-center gap-2 border-t border-[#141414] px-3.5 py-2.5 text-left first:border-t-0 hover:bg-[#101010]"
+                className="flex w-full items-center gap-2 border-t border-line px-3.5 py-2.5 text-left first:border-t-0 hover:bg-hover"
               >
                 <span className="font-mono text-[12px] text-muted">{t.teamNumber}</span>
                 <span className="truncate text-[13px] text-foreground">{t.name}</span>
@@ -344,7 +344,7 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
       {entries === undefined ? (
         <div className="text-sm text-muted">Loading…</div>
       ) : list.length === 0 ? (
-        <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+        <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
           Your shortlist is empty. Search above to add teams, then drag to rank them.
         </div>
       ) : (
@@ -358,7 +358,7 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
           </SortableContext>
         </DndContext>
       )}
-      <p className="text-[11px] text-[#6b6f78]">Your shortlist is private — only you can see it.</p>
+      <p className="text-[11px] text-dim">Your shortlist is private — only you can see it.</p>
     </div>
   );
 }
@@ -372,14 +372,14 @@ function Picklist({ id }: { id: Id<"workspaces"> }) {
 
   if (data === null)
     return (
-      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+      <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
         No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
       </div>
     );
   if (teamsData === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teamsData.length === 0)
     return (
-      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+      <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
         No teams yet — an admin needs to import the event (Setup).
       </div>
     );
@@ -389,7 +389,7 @@ function Picklist({ id }: { id: Id<"workspaces"> }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-[18px] font-semibold">Pick list</h2>
-        <div className="flex rounded-xl border border-[#232323] p-0.5 text-[13px]">
+        <div className="flex rounded-xl border border-border-strong p-0.5 text-[13px]">
           {(["rank", "shortlist"] as const).map((k) => (
             <button
               key={k}

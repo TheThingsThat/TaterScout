@@ -27,23 +27,23 @@ function Tile({
 }) {
   const pct = rankPercentile(stat.rank, count);
   return (
-    <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+    <div className="rounded-2xl border border-border bg-surface p-[18px]">
       <div className="flex items-baseline justify-between">
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
           {label}
         </span>
-        <span className="text-[10px] text-[#6b6f78]">{hint}</span>
+        <span className="text-[10px] text-dim">{hint}</span>
       </div>
       <div className="mt-2.5 flex items-baseline gap-2">
         <span className="text-[26px] font-bold tabular-nums" style={{ color: OPR }}>
           {fmt(stat.value)}
         </span>
-        <span className="text-[12px] text-[#6b6f78]">
+        <span className="text-[12px] text-dim">
           {ordinal(stat.rank)}
           {count ? ` / ${count.toLocaleString()}` : ""}
         </span>
       </div>
-      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-[#161616]">
+      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: OPR }} />
       </div>
     </div>

@@ -2,8 +2,8 @@
 // these so multi-tenant isolation + roles are enforced in one place.
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
-import type { QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Throw a message the USER is meant to read.
@@ -120,6 +120,18 @@ export async function requirePitAccess(
     fail("That team isn't assigned to you for pit scouting.");
   }
   return member;
+}
+
+/** Delete a pit report with its auto drawings and robot photo (file storage isn't
+ *  freed with the doc). */
+export async function deletePitReport(ctx: MutationCtx, report: Doc<"pitReports">): Promise<void> {
+  const drawings = await ctx.db
+    .query("pitAutos")
+    .withIndex("by_workspace_team", (q) => q.eq("workspaceId", report.workspaceId).eq("teamNumber", report.teamNumber))
+    .unique();
+  if (drawings) await ctx.db.delete(drawings._id);
+  if (report.photoId) await ctx.storage.delete(report.photoId).catch(() => {}); // already gone is fine
+  await ctx.db.delete(report._id);
 }
 
 /** Reject oversized user text/arrays so a member can't bloat the workspace. */

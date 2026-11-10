@@ -37,7 +37,7 @@ const trajectoryRow = v.object({
   events: v.array(
     v.object({ c: v.string(), n: v.union(v.string(), v.null()), s: v.union(v.string(), v.null()) }),
   ),
-  pointsJson: v.optional(v.string()),
+  pointsJson: v.string(),
 });
 
 const eventStatsRow = v.object({

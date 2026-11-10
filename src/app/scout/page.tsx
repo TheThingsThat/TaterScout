@@ -10,8 +10,8 @@ import { CURRENT_SEASON, seasonLabel } from "@/lib/season";
 import { errorMessage } from "@/lib/scoutError";
 
 const INPUT =
-  "w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-[#3a3a3a]";
-const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
+  "w-full rounded-xl border border-border-strong bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-border-hover";
+const CARD = "rounded-2xl border border-border bg-surface p-5";
 
 function Dashboard() {
   const router = useRouter();
@@ -82,16 +82,16 @@ function Dashboard() {
             {workspaces.map((w) => (
               <Link key={w._id} href={`/scout/w/${w._id}`} className={`${CARD} block no-underline`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium text-[#e7eaf0]">{w.name}</span>
+                  <span className="truncate font-medium text-body">{w.name}</span>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${
-                      w.role === "admin" ? "bg-accent/15 text-accent" : "bg-[#161616] text-muted"
+                      w.role === "admin" ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
                     }`}
                   >
                     {w.role}
                   </span>
                 </div>
-                <div className="mt-1 text-[12px] text-[#6b6f78]">
+                <div className="mt-1 text-[12px] text-dim">
                   {w.eventName || w.eventCode || "No event yet"} · {seasonLabel(w.season)}
                 </div>
                 {w.role === "admin" && (
@@ -126,7 +126,7 @@ function Dashboard() {
           <div className="space-y-2.5">
             <input className={`${INPUT} font-mono uppercase tracking-[0.14em]`} placeholder="Join code" value={jCode} onChange={(e) => setJCode(e.target.value)} />
             <input className={INPUT} placeholder="Your name" value={jWho} onChange={(e) => setJWho(e.target.value)} />
-            <button onClick={onJoin} disabled={busy} className="w-full rounded-xl border border-[#232323] px-4 py-2.5 text-[15px] font-medium text-foreground hover:border-[#3a3a3a] disabled:opacity-60">
+            <button onClick={onJoin} disabled={busy} className="w-full rounded-xl border border-border-strong px-4 py-2.5 text-[15px] font-medium text-foreground hover:border-border-hover disabled:opacity-60">
               Join
             </button>
           </div>

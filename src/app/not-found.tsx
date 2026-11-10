@@ -18,7 +18,7 @@ export default function NotFound() {
           <div className="text-[clamp(80px,14vw,150px)] font-bold leading-none tracking-[-0.02em] text-accent">
             404
           </div>
-          <h1 className="mt-[18px] text-[24px] font-semibold text-[#f7f8fa]">
+          <h1 className="mt-[18px] text-[24px] font-semibold text-heading">
             Not found
           </h1>
           <p className="mt-2.5 text-[15px] text-muted">

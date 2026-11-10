@@ -10,8 +10,8 @@ import Collapsible from "@/components/Collapsible";
 import { formatClock, fmt } from "@/lib/format";
 import { errorMessage } from "@/lib/scoutError";
 
-const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
-const HEADING = "mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#6b6f78]";
+const CARD = "rounded-2xl border border-border bg-surface p-5";
+const HEADING = "mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-dim";
 
 type SchedMatch = {
   matchNumber: number;
@@ -47,7 +47,7 @@ function useIsDesktop() {
 }
 
 function AllianceCell({ teams, side, won, align }: { teams: number[]; side: "red" | "blue"; won: boolean; align: "left" | "right" }) {
-  const color = won ? (side === "red" ? "#ff5d6c" : "#4d8dff") : "#6b6f78";
+  const color = won ? (side === "red" ? "var(--red)" : "var(--blue)") : "var(--dim)";
   return (
     <div className={`flex flex-col gap-0.5 ${align === "right" ? "items-end text-right" : "items-start text-left"}`}>
       {teams.map((t) => (
@@ -63,7 +63,7 @@ function AllianceCell({ teams, side, won, align }: { teams: number[]; side: "red
 // emphasized) for played matches, our predicted start time for upcoming ones.
 function ScheduleRows({ matches, highlight }: { matches: SchedMatch[]; highlight?: number }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       {matches.map((m) => {
         const redScore = m.redScore ?? null;
         const blueScore = m.blueScore ?? null;
@@ -75,19 +75,19 @@ function ScheduleRows({ matches, highlight }: { matches: SchedMatch[]; highlight
         return (
           <div
             key={m.matchNumber}
-            className={`grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-[#141414] px-4 py-[11px] first:border-t-0 ${mine ? "bg-accent/[0.05]" : ""}`}
+            className={`grid grid-cols-[48px_1fr] items-center gap-2.5 border-t border-line px-4 py-[11px] first:border-t-0 ${mine ? "bg-accent/[0.05]" : ""}`}
           >
-            <span className="font-mono text-[12px] text-[#6b6f78]">Q{m.matchNumber}</span>
+            <span className="font-mono text-[12px] text-dim">Q{m.matchNumber}</span>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
               <AllianceCell teams={m.red} side="red" won={redWon} align="right" />
               {played ? (
                 <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
-                  <span style={{ color: redWon ? "#ff5d6c" : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>{redScore}</span>
-                  <span className="text-[#3a3f48]">–</span>
-                  <span style={{ color: blueWon ? "#4d8dff" : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>{blueScore}</span>
+                  <span style={{ color: redWon ? "var(--red)" : "var(--dim)", fontWeight: redWon ? 700 : 400 }}>{redScore}</span>
+                  <span className="text-faint">–</span>
+                  <span style={{ color: blueWon ? "var(--blue)" : "var(--dim)", fontWeight: blueWon ? 700 : 400 }}>{blueScore}</span>
                 </div>
               ) : (
-                <span className="whitespace-nowrap text-[11px] italic text-[#6b6f78]">
+                <span className="whitespace-nowrap text-[11px] italic text-dim">
                   {time != null ? `~${formatClock(time)}` : "vs"}
                 </span>
               )}
@@ -117,17 +117,17 @@ function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season:
   });
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       {(hasEpa || hasRank) && (
-        <div className="flex items-center justify-end gap-1.5 border-b border-[#1f1f1f] px-3 py-2">
-          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6b6f78]">Sort</span>
-          <div className="flex rounded-lg border border-[#232323] p-0.5 text-[12px]">
+        <div className="flex items-center justify-end gap-1.5 border-b border-border px-3 py-2">
+          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.1em] text-dim">Sort</span>
+          <div className="flex rounded-lg border border-border-strong p-0.5 text-[12px]">
             {hasEpa && (
-              <button onClick={() => setSort("epa")} className={`rounded-md px-2.5 py-1 ${sort === "epa" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}>
+              <button onClick={() => setSort("epa")} className={`rounded-md px-2.5 py-1 ${sort === "epa" ? "bg-surface-2 text-foreground" : "text-muted"}`}>
                 EPA
               </button>
             )}
-            <button onClick={() => setSort("rank")} className={`rounded-md px-2.5 py-1 ${sort === "rank" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}>
+            <button onClick={() => setSort("rank")} className={`rounded-md px-2.5 py-1 ${sort === "rank" ? "bg-surface-2 text-foreground" : "text-muted"}`}>
               Qual rank
             </button>
           </div>
@@ -136,30 +136,30 @@ function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season:
       <div className="ts-scroll overflow-x-auto">
         <table className="w-full min-w-[20rem] border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-[#1f1f1f] text-[#6b6f78]">
+            <tr className="border-b border-border text-dim">
               <th className="px-3 py-2.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em]">#</th>
               <th className="px-3 py-2.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em]">Team</th>
-              {hasEpa && <th className={TH} style={{ color: "#2f8bff" }}>EPA</th>}
-              <th className={TH} style={{ color: "#3ecf76" }}>OPR</th>
+              {hasEpa && <th className={TH} style={{ color: "var(--epa)" }}>EPA</th>}
+              <th className={TH} style={{ color: "var(--opr)" }}>OPR</th>
             </tr>
           </thead>
           <tbody>
             {ranked.map((t, i) => (
               <tr
                 key={t.teamNumber}
-                className={`border-b border-[#141414] last:border-0 hover:bg-[#101010] ${t.teamNumber === highlight ? "bg-accent/[0.05]" : ""}`}
+                className={`border-b border-line last:border-0 hover:bg-hover ${t.teamNumber === highlight ? "bg-accent/[0.05]" : ""}`}
               >
-                <td className="px-3 py-2.5 font-mono text-[#6b6f78]">{sort === "rank" ? (t.rank ?? i + 1) : i + 1}</td>
+                <td className="px-3 py-2.5 font-mono text-dim">{sort === "rank" ? (t.rank ?? i + 1) : i + 1}</td>
                 <td className="px-3 py-2.5">
                   <Link prefetch={false} href={`/teams/${t.teamNumber}?season=${season}`} className="no-underline hover:text-accent">
-                    <span className="font-mono text-[#6b6f78]">{t.teamNumber}</span>{" "}
-                    <span className="font-medium text-[#e7eaf0]">{t.name}</span>
+                    <span className="font-mono text-dim">{t.teamNumber}</span>{" "}
+                    <span className="font-medium text-body">{t.name}</span>
                   </Link>
                 </td>
                 {hasEpa && (
-                  <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#2f8bff" }}>{fmt(t.epa)}</td>
+                  <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "var(--epa)" }}>{fmt(t.epa)}</td>
                 )}
-                <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "#3ecf76" }}>{fmt(t.oprNp)}</td>
+                <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "var(--opr)" }}>{fmt(t.oprNp)}</td>
               </tr>
             ))}
           </tbody>
@@ -206,7 +206,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
     (isDesktop ? (
       <div>
         <div className={HEADING}>
-          Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
+          Qualification schedule <span className="text-faint">({matchCount})</span>
         </div>
         <ScheduleRows matches={matches} highlight={myTeam ?? undefined} />
       </div>
@@ -215,8 +215,8 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
         defaultOpen={false}
         gap="mb-2"
         header={
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
-            Qualification schedule <span className="text-[#3a3f48]">({matchCount})</span>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-dim">
+            Qualification schedule <span className="text-faint">({matchCount})</span>
           </span>
         }
       >
@@ -253,7 +253,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
                   toast.error(errorMessage(e, "Could not rotate the join code"));
                 }
               }}
-              className="rounded-md border border-[#232323] px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground"
+              className="rounded-md border border-border-strong px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-border-hover hover:text-foreground"
               title="Removing a member doesn't make them forget the code — rotate it to actually revoke access."
             >
               New code
@@ -276,7 +276,7 @@ function Overview({ id }: { id: Id<"workspaces"> }) {
         </div>
       )}
       {myTeam != null && !nextMatch && matchCount > 0 && (
-        <div className="rounded-[14px] border border-[#1f1f1f] bg-surface px-5 py-3 text-[13px] text-muted">
+        <div className="rounded-[14px] border border-border bg-surface px-5 py-3 text-[13px] text-muted">
           No upcoming matches for team <span className="font-mono text-foreground">{myTeam}</span>.
         </div>
       )}

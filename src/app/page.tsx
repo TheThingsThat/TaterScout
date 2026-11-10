@@ -55,12 +55,12 @@ async function StatStrip() {
     [snap ? snap.matchesPlayedCount.toLocaleString() : "—", "matches played"],
   ];
   return (
-    <section className="mx-auto mt-16 max-w-[1240px] border-y border-[#161616] px-8 py-[26px]">
+    <section className="mx-auto mt-16 max-w-[1240px] border-y border-line px-8 py-[26px]">
       <div className="flex flex-wrap gap-x-9 gap-y-2 text-[clamp(18px,2vw,23px)] leading-[1.5]">
         {items.map(([v, l]) => (
           <span key={l}>
-            <span className="font-semibold text-[#f7f8fa]">{v}</span>{" "}
-            <span className="text-[#6b6f78]">{l}</span>
+            <span className="font-semibold text-heading">{v}</span>{" "}
+            <span className="text-dim">{l}</span>
           </span>
         ))}
       </div>
@@ -78,16 +78,16 @@ async function WorldRecord() {
   if (!wr) return null;
   return (
     <section className="mx-auto mt-16 max-w-[1240px] px-8">
-      <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+      <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-dim">
         World Record
       </div>
       <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[22px] border border-[#2a241a] bg-[#1c1814] md:grid-cols-[1.3fr_1fr]">
         <div className="bg-[#0a0805] px-[34px] pb-[30px] pt-[34px]">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-gold">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#ffc24b]">
             <span>✦</span> Highest match score · {SEASON_TITLE}
           </div>
           <div className="mt-3.5 flex items-baseline gap-3">
-            <span className="font-display text-[clamp(54px,7vw,86px)] font-semibold leading-none tabular-nums text-gold">
+            <span className="font-display text-[clamp(54px,7vw,86px)] font-semibold leading-none tabular-nums text-[#ffc24b]">
               {wr.score}
             </span>
             <span className="text-[12px] text-[#8a7a52]">points (no-penalty)</span>
@@ -99,7 +99,7 @@ async function WorldRecord() {
                 <Link
                   prefetch={false}
                   href={`/teams/${t.number}?season=${CURRENT_SEASON}`}
-                  className="text-inherit no-underline hover:text-gold"
+                  className="text-inherit no-underline hover:text-[#ffc24b]"
                 >
                   <span className="font-mono text-[13px] text-[#8a7a52]">{t.number}</span>{" "}
                   {t.name}
@@ -111,7 +111,7 @@ async function WorldRecord() {
         <Link
           prefetch={false}
           href={`/events/${wr.season}/${wr.eventCode}`}
-          className="relative flex flex-col justify-end overflow-hidden bg-gold p-7 no-underline"
+          className="relative flex flex-col justify-end overflow-hidden bg-[#ffc24b] p-7 no-underline"
         >
           <div
             className="pointer-events-none absolute inset-0 opacity-50"

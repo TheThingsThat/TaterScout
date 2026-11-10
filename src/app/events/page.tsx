@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<EventIndexRow["status"], string> = {
 
 const HEADING = "mb-3.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
 const FIELD =
-  "rounded-full border border-[#232323] bg-[#0c0c0c] px-4 py-[9px] text-[14px] text-foreground outline-none focus:border-accent";
+  "rounded-full border border-border-strong bg-input px-4 py-[9px] text-[14px] text-foreground outline-none focus:border-accent";
 
 type Param = string | string[] | undefined; // repeated in the URL, it arrives as an array
 
@@ -46,21 +46,21 @@ function EventRow({ e, showStatus }: { e: EventIndexRow; showStatus: boolean }) 
     <Link
       prefetch={false}
       href={`/events/${e.season}/${e.code}`}
-      className="flex items-center justify-between gap-4 border-t border-[#141414] px-5 py-[13px] no-underline transition-colors first:border-t-0 hover:bg-[#101010]"
+      className="flex items-center justify-between gap-4 border-t border-line px-5 py-[13px] no-underline transition-colors first:border-t-0 hover:bg-hover"
     >
       <div className="min-w-0">
-        <div className="truncate font-medium text-[#e7eaf0]">{e.name}</div>
-        <div className="truncate text-[12px] text-[#6b6f78]">{locationStr(e.location)}</div>
-        <div className="text-[12px] text-[#6b6f78] sm:hidden">{dateRange(e)}</div>
+        <div className="truncate font-medium text-body">{e.name}</div>
+        <div className="truncate text-[12px] text-dim">{locationStr(e.location)}</div>
+        <div className="text-[12px] text-dim sm:hidden">{dateRange(e)}</div>
       </div>
       <div className="flex shrink-0 items-center gap-3.5">
         {showStatus && e.status === "today" && (
           <span className="rounded-full bg-teal/15 px-[9px] py-[3px] text-[11px] font-semibold text-teal">Today</span>
         )}
-        <span className="hidden rounded-[7px] bg-[#161616] px-[9px] py-[3px] font-mono text-[11px] text-muted sm:block">
+        <span className="hidden rounded-[7px] bg-surface-2 px-[9px] py-[3px] font-mono text-[11px] text-muted sm:block">
           {eventTypeLabel(e.type)}
         </span>
-        <span className="hidden text-[12px] text-[#6b6f78] sm:block">{dateRange(e)}</span>
+        <span className="hidden text-[12px] text-dim sm:block">{dateRange(e)}</span>
       </div>
     </Link>
   );
@@ -135,15 +135,15 @@ export default async function EventsPage({ searchParams }: Props) {
   };
 
   const pagerBtn = (disabled: boolean) =>
-    `rounded-md border border-[#1a1a1a] px-2 py-1 ${disabled ? "pointer-events-none opacity-40" : "hover:text-foreground"}`;
+    `rounded-md border border-border px-2 py-1 ${disabled ? "pointer-events-none opacity-40" : "hover:text-foreground"}`;
 
   return (
     <div className="mx-auto max-w-[1240px] space-y-7 px-5 pb-6 pt-10 sm:px-8">
       <div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-dim">
           {seasonName(season)} · {seasonLabel(season)}
         </div>
-        <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+        <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-heading">
           Events
         </h1>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -155,7 +155,7 @@ export default async function EventsPage({ searchParams }: Props) {
               style={
                 s === season
                   ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
-                  : { border: "1px solid #232323", color: "#9aa0aa" }
+                  : { border: "1px solid var(--border-strong)", color: "var(--muted)" }
               }
             >
               {seasonLabel(s)}
@@ -167,9 +167,9 @@ export default async function EventsPage({ searchParams }: Props) {
       {!filtered && today.length > 0 && (
         <section>
           <h2 className={HEADING}>
-            Today&apos;s events <span className="text-[#3a3f48]">({today.length})</span>
+            Today&apos;s events <span className="text-faint">({today.length})</span>
           </h2>
-          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
             {today.map((e) => (
               <EventRow key={e.code} e={e} showStatus={false} />
             ))}
@@ -180,7 +180,7 @@ export default async function EventsPage({ searchParams }: Props) {
       <section>
         <h2 className={HEADING}>
           {filtered ? "Matching events" : "All events"}{" "}
-          <span className="text-[#3a3f48]">({matches.length.toLocaleString()})</span>
+          <span className="text-faint">({matches.length.toLocaleString()})</span>
         </h2>
         {/* Keyed so Clear, Back and a season switch reset the uncontrolled fields. */}
         <Form
@@ -194,7 +194,7 @@ export default async function EventsPage({ searchParams }: Props) {
             defaultValue={rawQ}
             placeholder="Name, code or place"
             aria-label="Search events"
-            className={`${FIELD} min-w-[200px] flex-1 placeholder:text-[#6b6f78]`}
+            className={`${FIELD} min-w-[200px] flex-1 placeholder:text-dim`}
           />
           <select name="status" defaultValue={status} aria-label="Filter by status" className={FIELD}>
             <option value="">Any status</option>
@@ -239,7 +239,7 @@ export default async function EventsPage({ searchParams }: Props) {
             {events.length === 0 ? "FIRST's event list isn't available right now." : "No events match."}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
             {rows.map((e) => (
               <EventRow key={e.code} e={e} showStatus />
             ))}
@@ -247,7 +247,7 @@ export default async function EventsPage({ searchParams }: Props) {
         )}
 
         {pages > 1 && (
-          <div className="mt-3 flex items-center justify-end gap-3 text-[12px] text-[#6b6f78]">
+          <div className="mt-3 flex items-center justify-end gap-3 text-[12px] text-dim">
             <span className="font-mono">
               Page {page} / {pages}
             </span>

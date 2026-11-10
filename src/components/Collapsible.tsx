@@ -35,7 +35,7 @@ export default function Collapsible({
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="shrink-0 text-[#6b6f78] transition-transform"
+            className="shrink-0 text-dim transition-transform"
             style={{ transform: open ? "rotate(90deg)" : "none" }}
           >
             <polyline points="9 6 15 12 9 18" />

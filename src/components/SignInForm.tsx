@@ -80,7 +80,7 @@ export default function SignInForm({ next }: { next: string }) {
       <button
         onClick={onGoogle}
         disabled={busy}
-        className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#232323] bg-surface px-4 py-3 text-[15px] font-medium text-foreground transition-colors hover:border-[#3a3a3a] disabled:opacity-60"
+        className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-xl border border-border-strong bg-surface px-4 py-3 text-[15px] font-medium text-foreground transition-colors hover:border-border-hover disabled:opacity-60"
       >
         <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -91,10 +91,10 @@ export default function SignInForm({ next }: { next: string }) {
         Continue with Google
       </button>
 
-      <div className="mt-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-[#52565e]">
-        <div className="h-px flex-1 bg-[#1a1a1a]" />
+      <div className="mt-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-dim">
+        <div className="h-px flex-1 bg-border" />
         or
-        <div className="h-px flex-1 bg-[#1a1a1a]" />
+        <div className="h-px flex-1 bg-border" />
       </div>
 
       <form onSubmit={onSubmit} className="mt-5 space-y-3">
@@ -105,7 +105,7 @@ export default function SignInForm({ next }: { next: string }) {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]"
+          className="w-full rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-border-hover"
         />
         <input
           type="password"
@@ -114,7 +114,7 @@ export default function SignInForm({ next }: { next: string }) {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]"
+          className="w-full rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-border-hover"
         />
         {error && <p className="text-[13px] text-accent">{error}</p>}
         <button
@@ -139,15 +139,15 @@ export default function SignInForm({ next }: { next: string }) {
       </button>
 
       {scouting && (
-        <div className="mt-8 border-t border-[#1a1a1a] pt-6">
+        <div className="mt-8 border-t border-border pt-6">
           <button
             onClick={onDemo}
             disabled={busy}
-            className="w-full rounded-xl border border-[#232323] px-4 py-3 text-[15px] font-medium text-foreground transition-colors hover:border-[#3a3a3a] disabled:opacity-60"
+            className="w-full rounded-xl border border-border-strong px-4 py-3 text-[15px] font-medium text-foreground transition-colors hover:border-border-hover disabled:opacity-60"
           >
             Try the demo — no sign-up
           </button>
-          <p className="mt-2 text-center text-[12px] text-[#6b6f78]">
+          <p className="mt-2 text-center text-[12px] text-dim">
             Explore scouting with throwaway data. Everything is deleted shortly
             after you close the tab.
           </p>

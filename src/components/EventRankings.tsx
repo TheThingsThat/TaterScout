@@ -53,24 +53,24 @@ export default function EventRankings({
   });
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       {(hasEpa || hasRank) && (
-        <div className="flex items-center justify-end gap-1.5 border-b border-[#1f1f1f] px-3 py-2">
-          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6b6f78]">
+        <div className="flex items-center justify-end gap-1.5 border-b border-border px-3 py-2">
+          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.1em] text-dim">
             Sort
           </span>
-          <div className="flex rounded-lg border border-[#232323] p-0.5 text-[12px]">
+          <div className="flex rounded-lg border border-border-strong p-0.5 text-[12px]">
             {hasEpa && (
               <button
                 onClick={() => setSort("epa")}
-                className={`rounded-md px-2.5 py-1 ${sort === "epa" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}
+                className={`rounded-md px-2.5 py-1 ${sort === "epa" ? "bg-surface-2 text-foreground" : "text-muted"}`}
               >
                 EPA
               </button>
             )}
             <button
               onClick={() => setSort("rank")}
-              className={`rounded-md px-2.5 py-1 ${sort === "rank" ? "bg-[#1c1c1c] text-foreground" : "text-muted"}`}
+              className={`rounded-md px-2.5 py-1 ${sort === "rank" ? "bg-surface-2 text-foreground" : "text-muted"}`}
             >
               Qual rank
             </button>
@@ -80,19 +80,19 @@ export default function EventRankings({
       <div className="ts-scroll overflow-x-auto">
         <table className="w-full min-w-[22rem] border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-[#1f1f1f]">
-              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+            <tr className="border-b border-border">
+              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                 #
               </th>
-              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                 Team
               </th>
               {hasEpa && (
-                <th className={TH} style={{ color: "#2f8bff" }}>
+                <th className={TH} style={{ color: "var(--epa)" }}>
                   EPA
                 </th>
               )}
-              <th className={TH} style={{ color: "#3ecf76" }}>
+              <th className={TH} style={{ color: "var(--opr)" }}>
                 OPR
               </th>
             </tr>
@@ -103,9 +103,9 @@ export default function EventRankings({
               return (
                 <tr
                   key={t.teamNumber}
-                  className="border-b border-[#141414] transition-colors last:border-0 hover:bg-[#101010]"
+                  className="border-b border-line transition-colors last:border-0 hover:bg-hover"
                 >
-                  <td className="px-3.5 py-2.5 font-mono text-[#6b6f78]">
+                  <td className="px-3.5 py-2.5 font-mono text-dim">
                     {sort === "rank" ? (t.stats?.rank ?? i + 1) : i + 1}
                   </td>
                   <td className="px-3.5 py-2.5">
@@ -114,16 +114,16 @@ export default function EventRankings({
                       href={`/teams/${t.teamNumber}?season=${season}`}
                       className="no-underline hover:text-accent"
                     >
-                      <span className="font-mono text-[#6b6f78]">{t.teamNumber}</span>{" "}
-                      <span className="font-medium text-[#e7eaf0]">{t.team.name}</span>
+                      <span className="font-mono text-dim">{t.teamNumber}</span>{" "}
+                      <span className="font-medium text-body">{t.team.name}</span>
                     </Link>
                   </td>
                   {hasEpa && (
-                    <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#2f8bff" }}>
+                    <td className="px-2.5 py-2.5 text-right font-semibold tabular-nums" style={{ color: "var(--epa)" }}>
                       {fmt(row.epa)}
                     </td>
                   )}
-                  <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "#3ecf76" }}>
+                  <td className="px-2.5 py-2.5 text-right tabular-nums" style={{ color: "var(--opr)" }}>
                     {fmt(row.oprNp)}
                   </td>
                 </tr>
@@ -132,7 +132,7 @@ export default function EventRankings({
           </tbody>
         </table>
       </div>
-      <p className="px-3.5 py-[11px] text-[11px] text-[#6b6f78]">
+      <p className="px-3.5 py-[11px] text-[11px] text-dim">
         {sort === "rank"
           ? "Ranked by qualification standing."
           : stats.size > 0

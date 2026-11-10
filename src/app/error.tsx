@@ -36,7 +36,7 @@ export default function Error({
           <div className="text-[clamp(60px,10vw,110px)] font-bold leading-none tracking-[-0.02em] text-accent">
             ⚠
           </div>
-          <h1 className="mt-[18px] text-[24px] font-semibold text-[#f7f8fa]">
+          <h1 className="mt-[18px] text-[24px] font-semibold text-heading">
             Couldn&apos;t load live data
           </h1>
           <p className="mt-2.5 max-w-[30rem] text-[15px] text-muted">
@@ -53,13 +53,13 @@ export default function Error({
             </button>
             <Link
               href="/rankings"
-              className="inline-flex items-center gap-2.5 rounded-full border border-[#232323] px-[22px] py-3 text-[15px] text-muted no-underline transition-colors hover:border-[#3a3a3a] hover:text-foreground"
+              className="inline-flex items-center gap-2.5 rounded-full border border-border-strong px-[22px] py-3 text-[15px] text-muted no-underline transition-colors hover:border-border-hover hover:text-foreground"
             >
               Go to rankings
             </Link>
           </div>
           {error.digest && (
-            <p className="mt-4 font-mono text-[11px] text-[#52565e]">ref {error.digest}</p>
+            <p className="mt-4 font-mono text-[11px] text-dim">ref {error.digest}</p>
           )}
         </div>
       </div>

@@ -19,7 +19,7 @@ import Collapsible from "@/components/Collapsible";
 import { formatClock } from "@/lib/format";
 import { errorMessage } from "@/lib/scoutError";
 
-const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
+const CARD = "rounded-2xl border border-border bg-surface p-5";
 
 // ---- Members table ----------------------------------------------------------
 function MembersTable({ id }: { id: Id<"workspaces"> }) {
@@ -38,21 +38,21 @@ function MembersTable({ id }: { id: Id<"workspaces"> }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       {members.map((m) => (
-        <div key={m._id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#141414] px-4 py-3 first:border-t-0">
+        <div key={m._id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-4 py-3 first:border-t-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="truncate font-medium text-[#e7eaf0]">{m.name}</span>
+              <span className="truncate font-medium text-body">{m.name}</span>
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${
-                  m.role === "admin" ? "bg-accent/15 text-accent" : "bg-[#161616] text-muted"
+                  m.role === "admin" ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
                 }`}
               >
                 {m.role}
               </span>
             </div>
-            <div className="truncate text-[12px] text-[#6b6f78]">{m.email ?? "—"}</div>
+            <div className="truncate text-[12px] text-dim">{m.email ?? "—"}</div>
           </div>
           <div className="text-right text-[12px] text-muted">
             <div>{m.matchSubmitted}/{m.matchAssigned} match</div>
@@ -62,14 +62,14 @@ function MembersTable({ id }: { id: Id<"workspaces"> }) {
             {m.role === "scout" ? (
               <button
                 onClick={() => act(setRole({ workspaceId: id, memberId: m._id, role: "admin" }))}
-                className="rounded-lg border border-[#232323] px-2.5 py-1 text-[12px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+                className="rounded-lg border border-border-strong px-2.5 py-1 text-[12px] text-muted hover:border-border-hover hover:text-foreground"
               >
                 Promote
               </button>
             ) : (
               <button
                 onClick={() => act(setRole({ workspaceId: id, memberId: m._id, role: "scout" }))}
-                className="rounded-lg border border-[#232323] px-2.5 py-1 text-[12px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+                className="rounded-lg border border-border-strong px-2.5 py-1 text-[12px] text-muted hover:border-border-hover hover:text-foreground"
               >
                 Demote
               </button>
@@ -78,7 +78,7 @@ function MembersTable({ id }: { id: Id<"workspaces"> }) {
               onClick={() => {
                 if (confirm(`Remove ${m.name} from this workspace?`)) act(remove({ workspaceId: id, memberId: m._id }));
               }}
-              className="rounded-lg border border-[#232323] px-2.5 py-1 text-[12px] text-muted hover:border-accent/50 hover:text-accent"
+              className="rounded-lg border border-border-strong px-2.5 py-1 text-[12px] text-muted hover:border-accent/50 hover:text-accent"
             >
               Remove
             </button>
@@ -158,7 +158,7 @@ function DelegationPanel({
               key={m._id}
               onClick={() => setExcludedScouts(toggle(excludedScouts, m._id))}
               className={`rounded-full border px-2.5 py-1 text-[12px] ${
-                pickedScouts.has(m._id) ? "border-accent bg-accent/15 text-accent" : "border-[#232323] text-muted"
+                pickedScouts.has(m._id) ? "border-accent bg-accent/15 text-accent" : "border-border-strong text-muted"
               }`}
             >
               {m.name}
@@ -186,7 +186,7 @@ function DelegationPanel({
           value={teamQ}
           onChange={(e) => setTeamQ(e.target.value)}
           placeholder="Filter teams…"
-          className="mb-2 w-full rounded-lg border border-[#232323] bg-surface px-3 py-2 text-[13px] outline-none focus:border-[#3a3a3a]"
+          className="mb-2 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-[13px] outline-none focus:border-border-hover"
         />
         <div className="ts-scroll flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
           {shown.map((t) => (
@@ -195,7 +195,7 @@ function DelegationPanel({
               onClick={() => setPickedTeams(toggle(pickedTeams, t.teamNumber))}
               title={t.name}
               className={`rounded-lg border px-2 py-1 font-mono text-[12px] ${
-                pickedTeams.has(t.teamNumber) ? "border-accent bg-accent/15 text-accent" : "border-[#232323] text-muted"
+                pickedTeams.has(t.teamNumber) ? "border-accent bg-accent/15 text-accent" : "border-border-strong text-muted"
               }`}
             >
               {t.teamNumber}
@@ -242,20 +242,20 @@ function AssignCard({
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: aid });
-  const color = status === "done" ? "#3ecf76" : status === "overdue" ? "#ff5d6c" : "#6b6f78";
+  const color = status === "done" ? "var(--opr)" : status === "overdue" ? "var(--red)" : "var(--dim)";
   return (
     <div
       ref={setNodeRef}
       style={{ transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, opacity: isDragging ? 0.4 : 1 }}
-      className={`flex items-center gap-2 rounded-lg border bg-[#111] px-2.5 py-2 ${
-        status === "overdue" ? "border-accent/40" : "border-[#232323]"
+      className={`flex items-center gap-2 rounded-lg border bg-surface-2 px-2.5 py-2 ${
+        status === "overdue" ? "border-accent/40" : "border-border-strong"
       }`}
     >
-      <span {...attributes} {...listeners} className="cursor-grab touch-none text-[#4a4f57] active:cursor-grabbing">
+      <span {...attributes} {...listeners} className="cursor-grab touch-none text-faint active:cursor-grabbing">
         ⠿
       </span>
       <span className="min-w-0 flex-1">
-        <span className="font-mono text-[12px] text-[#e7eaf0]">{label}</span>{" "}
+        <span className="font-mono text-[12px] text-body">{label}</span>{" "}
         <span className="text-[11px] text-muted">{sub}</span>
       </span>
       <span className="text-[10px]" style={{ color }}>
@@ -283,14 +283,14 @@ function ScoutColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-2xl border p-3 transition-colors ${isOver ? "border-accent bg-accent/[0.06]" : "border-[#1a1a1a] bg-surface"}`}
+      className={`rounded-2xl border p-3 transition-colors ${isOver ? "border-accent bg-accent/[0.06]" : "border-border bg-surface"}`}
     >
       <Collapsible
         defaultOpen={false}
         gap="mb-2"
         header={
           <span className="flex items-center gap-2 text-[14px]">
-            <span className="font-medium text-[#e7eaf0]">{name}</span>
+            <span className="font-medium text-body">{name}</span>
             <span className="font-mono text-[11px] text-muted">{count}</span>
             {overdueCount > 0 && (
               <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">{overdueCount} overdue</span>
@@ -299,7 +299,7 @@ function ScoutColumn({
         }
       >
         <div className="space-y-1.5">
-          {count === 0 ? <div className="px-1 py-2 text-[12px] text-[#4a4f57]">No assignments — drag some here.</div> : children}
+          {count === 0 ? <div className="px-1 py-2 text-[12px] text-faint">No assignments — drag some here.</div> : children}
         </div>
       </Collapsible>
     </div>
@@ -480,7 +480,7 @@ function Members({ id }: { id: Id<"workspaces"> }) {
         </div>
         <button
           onClick={() => setFree({ workspaceId: id, on: !free })}
-          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${free ? "bg-accent" : "bg-[#2a2a2a]"}`}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${free ? "bg-accent" : "bg-border-strong"}`}
           aria-pressed={free}
         >
           <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${free ? "left-[22px]" : "left-0.5"}`} />
@@ -491,7 +491,7 @@ function Members({ id }: { id: Id<"workspaces"> }) {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-[16px] font-semibold">Assignments</h3>
-          <div className="flex rounded-xl border border-[#232323] p-0.5 text-[13px]">
+          <div className="flex rounded-xl border border-border-strong p-0.5 text-[13px]">
             {(["match", "pit"] as const).map((k) => (
               <button
                 key={k}

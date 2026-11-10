@@ -43,7 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const HEADING = "mb-3.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
 const OUTLINE_BTN =
-  "rounded-[10px] border border-[#232323] px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-[#3a3a3a] hover:text-foreground";
+  "rounded-[10px] border border-border-strong px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-border-hover hover:text-foreground";
 
 function StatusBadge({ ongoing, finished }: { ongoing: boolean; finished: boolean }) {
   if (ongoing)
@@ -54,7 +54,7 @@ function StatusBadge({ ongoing, finished }: { ongoing: boolean; finished: boolea
       </span>
     );
   return (
-    <span className="rounded-full bg-[#161616] px-[11px] py-1 text-[11px] font-semibold text-muted">
+    <span className="rounded-full bg-surface-2 px-[11px] py-1 text-[11px] font-semibold text-muted">
       {finished ? "Finished" : "Upcoming"}
     </span>
   );
@@ -281,21 +281,21 @@ export default async function EventPage({ params, searchParams }: Props) {
     <div className="mx-auto max-w-[1240px] space-y-7 px-5 pb-6 pt-10 sm:px-8">
       <LiveRefresh enabled={ev.ongoing} />
       {/* Header card */}
-      <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
+      <div className="rounded-[20px] border border-border bg-surface px-[30px] py-7">
         <div className="flex flex-wrap items-start justify-between gap-[18px]">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-[7px] bg-[#161616] px-2.5 py-[3px] font-mono text-[11px] text-muted">
+              <span className="rounded-[7px] bg-surface-2 px-2.5 py-[3px] font-mono text-[11px] text-muted">
                 {eventTypeLabel(ev.type)}
               </span>
               <StatusBadge ongoing={ev.ongoing} finished={ev.finished} />
               {ev.remote && (
-                <span className="rounded-[7px] bg-[#161616] px-2.5 py-[3px] font-mono text-[11px] text-muted">
+                <span className="rounded-[7px] bg-surface-2 px-2.5 py-[3px] font-mono text-[11px] text-muted">
                   Remote
                 </span>
               )}
             </div>
-            <h1 className="mt-3.5 text-[clamp(26px,3.6vw,38px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+            <h1 className="mt-3.5 text-[clamp(26px,3.6vw,38px)] font-semibold tracking-[-0.01em] text-heading">
               {ev.name}
             </h1>
             <p className="mt-2 text-[14px] text-muted">
@@ -338,11 +338,11 @@ export default async function EventPage({ params, searchParams }: Props) {
         </div>
         <div className="mt-5 flex gap-7 text-[14px]">
           <div>
-            <span className="text-[#6b6f78]">Teams</span>{" "}
+            <span className="text-dim">Teams</span>{" "}
             <span className="font-mono font-semibold">{ev.teams.length}</span>
           </div>
           <div>
-            <span className="text-[#6b6f78]">Matches</span>{" "}
+            <span className="text-dim">Matches</span>{" "}
             <span className="font-mono font-semibold">
               {ev.matches.filter((m) => m.teams.length > 0).length}
             </span>
@@ -356,7 +356,7 @@ export default async function EventPage({ params, searchParams }: Props) {
             <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
               Prediction accuracy
             </h2>
-            <span className="text-[11px] text-[#6b6f78]">
+            <span className="text-[11px] text-dim">
               win calls vs results{ev.ongoing ? " · live" : ""}
             </span>
           </div>
@@ -376,7 +376,7 @@ export default async function EventPage({ params, searchParams }: Props) {
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                 Predictions
               </span>
-              <span className="text-[11px] text-[#6b6f78]">win odds, seeds &amp; playoffs</span>
+              <span className="text-[11px] text-dim">win odds, seeds &amp; playoffs</span>
             </span>
           }
           right={<PredictScheduleToggle value={mode} realAvailable={realAvailable} />}
@@ -393,7 +393,7 @@ export default async function EventPage({ params, searchParams }: Props) {
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                 Strength of Schedule
               </span>
-              <span className="text-[11px] text-[#6b6f78]">how lucky was the draw</span>
+              <span className="text-[11px] text-dim">how lucky was the draw</span>
             </span>
           }
         >

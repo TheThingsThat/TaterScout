@@ -28,16 +28,16 @@ export default function RegionSelect({
         value={value}
         onChange={onChange}
         aria-label="Filter by region"
-        className="cursor-pointer rounded-full border border-[#232323] bg-[#0c0c0c] py-[9px] pl-4 pr-9 text-[14px] text-foreground outline-none focus:border-accent"
+        className="cursor-pointer rounded-full border border-border-strong bg-input py-[9px] pl-4 pr-9 text-[14px] text-foreground outline-none focus:border-accent"
       >
         <option value="">All regions</option>
         {regions.map((r) => (
-          <option key={r} value={r} style={{ background: "#0c0c0c" }}>
+          <option key={r} value={r} style={{ background: "var(--input)" }}>
             {r}
           </option>
         ))}
       </select>
-      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-[#6b6f78]">
+      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-dim">
         ▼
       </span>
     </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { SosResult } from "@/lib/predict/sos";
 
-const TH = "px-2.5 py-3 text-right font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]";
+const TH = "px-2.5 py-3 text-right font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -32,10 +32,10 @@ export default function EventSos({
   ];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1f1f1f] px-3.5 py-2.5">
-        <span className="text-[11px] text-[#6b6f78]">Higher = harder schedule draw</span>
-        <div className="inline-flex overflow-hidden rounded-lg border border-[#232323]">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3.5 py-2.5">
+        <span className="text-[11px] text-dim">Higher = harder schedule draw</span>
+        <div className="inline-flex overflow-hidden rounded-lg border border-border-strong">
           {tabs.map((t) => (
             <button
               key={t.v}
@@ -44,7 +44,7 @@ export default function EventSos({
               style={
                 mode === t.v
                   ? { background: "var(--accent)", color: "#fff" }
-                  : { background: "transparent", color: "#9aa0aa" }
+                  : { background: "transparent", color: "var(--muted)" }
               }
             >
               {t.label}
@@ -56,10 +56,10 @@ export default function EventSos({
       <div className="ts-scroll overflow-x-auto">
         <table className="w-full min-w-[34rem] border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-[#1f1f1f]">
-              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">#</th>
-              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">Team</th>
-              <th className={TH} style={{ color: "#c9cdd4" }}>Composite</th>
+            <tr className="border-b border-border">
+              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">#</th>
+              <th className="px-3.5 py-3 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">Team</th>
+              <th className={TH} style={{ color: "var(--body)" }}>Composite</th>
               <th className={TH}>Δ RP</th>
               <th className={TH}>Δ Rank</th>
               <th className={TH}>Δ EPA</th>
@@ -71,12 +71,12 @@ export default function EventSos({
               return (
                 <tr
                   key={t.number}
-                  className="border-b border-[#141414] transition-colors last:border-0 hover:bg-[#101010]"
+                  className="border-b border-line transition-colors last:border-0 hover:bg-hover"
                 >
-                  <td className="px-3.5 py-2.5 font-mono text-[#6b6f78]">{i + 1}</td>
+                  <td className="px-3.5 py-2.5 font-mono text-dim">{i + 1}</td>
                   <td className="px-3.5 py-2.5">
                     <Link prefetch={false} href={`/teams/${t.number}?season=${season}`} className="no-underline hover:text-accent">
-                      <span className="font-mono text-[#6b6f78]">{t.number}</span>
+                      <span className="font-mono text-dim">{t.number}</span>
                     </Link>
                   </td>
                   <td className="px-2.5 py-2 text-right">
@@ -87,11 +87,11 @@ export default function EventSos({
                       {pct(t.composite)}
                     </span>
                   </td>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums text-[#9aa0aa]">{pct(t.rpPctile)}</td>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums text-[#9aa0aa]">{pct(t.rankPctile)}</td>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums text-[#9aa0aa]">
+                  <td className="px-2.5 py-2.5 text-right tabular-nums text-muted">{pct(t.rpPctile)}</td>
+                  <td className="px-2.5 py-2.5 text-right tabular-nums text-muted">{pct(t.rankPctile)}</td>
+                  <td className="px-2.5 py-2.5 text-right tabular-nums text-muted">
                     {pct(t.epaPctile)}
-                    <span className="ml-1 text-[11px] text-[#52565e]">
+                    <span className="ml-1 text-[11px] text-dim">
                       ({t.deltaEpa >= 0 ? "+" : ""}
                       {t.deltaEpa.toFixed(0)})
                     </span>
@@ -102,7 +102,7 @@ export default function EventSos({
           </tbody>
         </table>
       </div>
-      <p className="px-3.5 py-[11px] text-[11px] text-[#6b6f78]">
+      <p className="px-3.5 py-[11px] text-[11px] text-dim">
         Percentile of {result.iters.toLocaleString()} random balanced schedules easier than the actual draw.
         Δ EPA = points of head/tail-wind from partner vs opponent strength. Diagnostic only — not part of EPA or predictions.
       </p>

@@ -6,6 +6,8 @@ import Footer from "@/components/Footer";
 import Heartbeat from "@/components/Heartbeat";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
+import { cookies } from "next/headers";
+import { THEME_COOKIE } from "@/lib/theme";
 
 const grotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -53,14 +55,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // A chosen theme is rendered server-side, so it never flashes; with no choice
+  // the CSS follows the device (globals.css).
+  const theme = (await cookies()).get(THEME_COOKIE)?.value;
   return (
     <html
       lang="en"
+      data-theme={theme === "light" || theme === "dark" ? theme : undefined}
       className={`${grotesk.variable} ${spaceMono.variable} ${newsreader.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">

@@ -41,7 +41,7 @@ export default function StarButton({ team, compact = false }: { team: number; co
 
   if (me === undefined) {
     return (
-      <span className={`${BTN} border-[#232323] text-muted opacity-60`} aria-hidden>
+      <span className={`${BTN} border-border-strong text-muted opacity-60`} aria-hidden>
         <StarIcon filled={false} /> Star
       </span>
     );
@@ -52,7 +52,7 @@ export default function StarButton({ team, compact = false }: { team: number; co
       <button
         onClick={() => router.push(signInHref())}
         title="Sign in to star this team and follow it on your homepage"
-        className={`${BTN} border-[#232323] text-muted hover:border-[#3a3a3a] hover:text-foreground`}
+        className={`${BTN} border-border-strong text-muted hover:border-border-hover hover:text-foreground`}
       >
         <StarIcon filled={false} /> Star
       </button>
@@ -63,7 +63,7 @@ export default function StarButton({ team, compact = false }: { team: number; co
     return (
       <span
         title="Create an account to star teams — demo data is deleted when the demo ends"
-        className={`${BTN} cursor-not-allowed border-[#232323] text-muted opacity-60`}
+        className={`${BTN} cursor-not-allowed border-border-strong text-muted opacity-60`}
       >
         <StarIcon filled={false} /> Star
       </span>
@@ -85,7 +85,7 @@ export default function StarButton({ team, compact = false }: { team: number; co
         aria-pressed={starred}
         aria-label={starred ? `Unstar team ${team}` : `Star team ${team}`}
         title={starred ? "Unstar" : "Star"}
-        className={`shrink-0 rounded-md p-1 transition-colors ${starred ? "text-gold hover:text-[#ffd57f]" : "text-muted hover:text-foreground"}`}
+        className={`shrink-0 rounded-md p-1 transition-colors ${starred ? "text-gold hover:text-[color-mix(in_srgb,var(--gold)_70%,var(--heading))]" : "text-muted hover:text-foreground"}`}
       >
         <StarIcon filled={starred} />
       </button>
@@ -100,7 +100,7 @@ export default function StarButton({ team, compact = false }: { team: number; co
       className={`${BTN} ${
         starred
           ? "border-gold/50 bg-gold/[0.08] text-gold hover:border-gold"
-          : "border-[#232323] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+          : "border-border-strong text-muted hover:border-border-hover hover:text-foreground"
       }`}
     >
       <StarIcon filled={starred} /> {starred ? "Starred" : "Star"}

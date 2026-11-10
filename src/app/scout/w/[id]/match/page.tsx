@@ -8,7 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/scoutError";
 
-const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-4";
+const CARD = "rounded-2xl border border-border bg-surface p-4";
 const MALFUNCTIONS = ["drivetrain", "turret", "intake", "shooter"];
 const TAGS = ["fast", "accurate", "good driver", "plays defense", "inconsistent"];
 
@@ -21,7 +21,7 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
       type="button"
       onClick={onClick}
       className={`rounded-xl border px-3 py-2.5 text-[14px] capitalize transition-colors ${
-        on ? "border-accent bg-accent/15 text-foreground" : "border-[#232323] text-muted hover:border-[#3a3a3a]"
+        on ? "border-accent bg-accent/15 text-foreground" : "border-border-strong text-muted hover:border-border-hover"
       }`}
     >
       {children}
@@ -51,17 +51,17 @@ function Stepper({ label, value, set, onTally }: { label: string; value: number;
           <button
             type="button"
             onClick={onTally}
-            className="rounded-lg border border-[#232323] px-2.5 py-2 text-[12px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+            className="rounded-lg border border-border-strong px-2.5 py-2 text-[12px] text-muted hover:border-border-hover hover:text-foreground"
             title="Tally mode — big +/- buttons"
           >
             Tally
           </button>
         )}
-        <button type="button" onClick={() => set(Math.max(0, value - 1))} className="h-9 w-9 rounded-lg border border-[#232323] text-[18px] text-muted hover:border-[#3a3a3a]">
+        <button type="button" onClick={() => set(Math.max(0, value - 1))} className="h-9 w-9 rounded-lg border border-border-strong text-[18px] text-muted hover:border-border-hover">
           −
         </button>
         <span className="w-8 text-center text-[18px] font-bold tabular-nums">{value}</span>
-        <button type="button" onClick={() => set(value + 1)} className="h-9 w-9 rounded-lg border border-[#232323] text-[18px] text-muted hover:border-[#3a3a3a]">
+        <button type="button" onClick={() => set(value + 1)} className="h-9 w-9 rounded-lg border border-border-strong text-[18px] text-muted hover:border-border-hover">
           +
         </button>
       </div>
@@ -85,21 +85,21 @@ function TallyOverlay({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex select-none flex-col bg-[#0a0a0a]">
+    <div className="fixed inset-0 z-[100] flex select-none flex-col bg-surface">
       {/* Top 1/4 — tap anywhere to subtract one. */}
       <button
         type="button"
         onClick={dec}
-        className="flex h-1/4 items-center justify-center gap-3 bg-[#170f0f] transition-colors active:bg-[#2a1414]"
+        className="flex h-1/4 items-center justify-center gap-3 bg-red/5 transition-colors active:bg-red/[0.13]"
       >
         <span className="text-[56px] font-bold leading-none text-accent">−</span>
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#7a5a5a]">tap to −1</span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color-mix(in_srgb,var(--red)_35%,var(--faint))]">tap to −1</span>
       </button>
       {/* Bottom 3/4 — the count lives here; tap anywhere to add one. */}
       <button
         type="button"
         onClick={inc}
-        className="flex h-3/4 flex-col items-center justify-center gap-1 bg-[#0c130d] transition-colors active:bg-[#132a17]"
+        className="flex h-3/4 flex-col items-center justify-center gap-1 bg-opr/[0.04] transition-colors active:bg-opr/[0.16]"
       >
         <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">{label}</span>
         <span className="text-[128px] font-bold leading-none tabular-nums text-foreground">{value}</span>
@@ -110,7 +110,7 @@ function TallyOverlay({
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-4 top-4 rounded-full border border-[#333] bg-black/50 px-4 py-2 text-[14px] font-medium text-foreground backdrop-blur"
+        className="absolute right-4 top-4 rounded-full border border-border-hover bg-background/50 px-4 py-2 text-[14px] font-medium text-foreground backdrop-blur"
       >
         Done
       </button>
@@ -275,9 +275,9 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
               onKeyDown={(e) => e.key === "Enter" && addFilter()}
               inputMode="numeric"
               placeholder="Filter by team # (e.g. 30435)"
-              className="flex-1 rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-[#3a3a3a]"
+              className="flex-1 rounded-xl border border-border-strong bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-border-hover"
             />
-            <button onClick={addFilter} className="rounded-xl border border-[#232323] px-3.5 text-[13px] text-muted hover:border-[#3a3a3a] hover:text-foreground">
+            <button onClick={addFilter} className="rounded-xl border border-border-strong px-3.5 text-[13px] text-muted hover:border-border-hover hover:text-foreground">
               Add
             </button>
           </div>
@@ -313,7 +313,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
               void releaseTeam();
               setMatchNumber(e.target.value ? Number(e.target.value) : null);
             }}
-            className="w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]"
+            className="w-full rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-border-hover"
           >
             <option value="">Select a qualification match…</option>
             {visibleMatches.map((m) => (
@@ -342,8 +342,8 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
                     key={n}
                     disabled={disabled}
                     onClick={() => pickTeam(n)}
-                    className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${disabled ? "" : "hover:bg-[#101010]"}`}
-                    style={{ borderColor: side === "red" ? "rgba(255,93,108,0.4)" : "rgba(77,141,255,0.4)" }}
+                    className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${disabled ? "" : "hover:bg-hover"}`}
+                    style={{ borderColor: side === "red" ? "color-mix(in srgb, var(--red) 40%, transparent)" : "color-mix(in srgb, var(--blue) 40%, transparent)" }}
                   >
                     <div className="font-mono text-[15px] font-bold">{n}</div>
                     <div className="text-[11px] text-muted">
@@ -402,7 +402,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Short note (optional)"
-                className="mt-2 w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-[#3a3a3a]"
+                className="mt-2 w-full rounded-xl border border-border-strong bg-surface px-3.5 py-2.5 text-[14px] outline-none focus:border-border-hover"
               />
             )}
           </section>
@@ -416,7 +416,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
                   type="button"
                   onClick={() => setTags(arr(tags, t))}
                   className={`rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
-                    tags.includes(t) ? "border-accent bg-accent/15 text-accent" : "border-[#232323] text-muted"
+                    tags.includes(t) ? "border-accent bg-accent/15 text-accent" : "border-border-strong text-muted"
                   }`}
                 >
                   {t}

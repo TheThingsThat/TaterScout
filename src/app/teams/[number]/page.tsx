@@ -148,25 +148,25 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
 const HEADING = "font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
 const OUTLINE_BTN =
-  "rounded-[10px] border border-[#232323] px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-[#3a3a3a] hover:text-foreground";
+  "rounded-[10px] border border-border-strong px-3.5 py-2 text-[13px] text-muted no-underline transition-colors hover:border-border-hover hover:text-foreground";
 
 /** The banner: number, name, location, and the star / website / FTCScout buttons. */
 function TeamHeader({ team }: { team: Team }) {
   return (
-    <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-[30px] py-7">
+    <div className="rounded-[20px] border border-border bg-surface px-[30px] py-7">
       <div className="flex flex-wrap items-start justify-between gap-[18px]">
         <div>
           <div className="flex items-center gap-3.5">
             <span
               className="rounded-[10px] px-3 py-1 font-mono text-[20px] font-bold text-accent"
               style={{
-                background: "rgba(205,14,14,0.12)",
-                border: "1px solid rgba(205,14,14,0.3)",
+                background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
               }}
             >
               {team.number}
             </span>
-            <h1 className="m-0 text-[clamp(28px,4vw,40px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+            <h1 className="m-0 text-[clamp(28px,4vw,40px)] font-semibold tracking-[-0.01em] text-heading">
               {team.name}
             </h1>
           </div>
@@ -175,7 +175,7 @@ function TeamHeader({ team }: { team: Team }) {
             {team.rookieYear > 0 ? ` · Rookie year ${team.rookieYear}` : ""}
           </p>
           {team.schoolName && (
-            <p className="mt-1 text-[14px] text-[#6b6f78]">{team.schoolName}</p>
+            <p className="mt-1 text-[14px] text-dim">{team.schoolName}</p>
           )}
         </div>
         <div className="flex flex-wrap gap-2.5">
@@ -213,7 +213,7 @@ function SeasonTabs({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5">
-      <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">Season</span>
+      <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.12em] text-dim">Season</span>
       {seasons.map((s) => (
         <Link
           key={s}
@@ -223,7 +223,7 @@ function SeasonTabs({
           style={
             s === season
               ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
-              : { border: "1px solid #232323", color: "#9aa0aa" }
+              : { border: "1px solid var(--border-strong)", color: "var(--muted)" }
           }
         >
           {seasonLabel(s)}
@@ -358,10 +358,10 @@ export default async function TeamPage({ params, searchParams }: Props) {
       <SeasonTabs team={team.number} seasons={seasons} season={season}>
         {recordGames > 0 && (
           <span className="ml-auto flex items-baseline gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
               {record.ties > 0 ? "W-L-T" : "W-L"}
             </span>
-            <span className="text-[15px] font-semibold tabular-nums text-[#f7f8fa]">
+            <span className="text-[15px] font-semibold tabular-nums text-heading">
               {record.wins}–{record.losses}
               {record.ties > 0 ? `–${record.ties}` : ""}
             </span>
@@ -374,7 +374,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
         <section>
           <div className="mb-3.5 flex items-baseline gap-2.5">
             <h2 className={HEADING}>{seasonFull(season)} — EPA</h2>
-            <span className="text-[11px] text-[#6b6f78]">Expected Points Added</span>
+            <span className="text-[11px] text-dim">Expected Points Added</span>
           </div>
           <EpaTiles team={epa} teamCount={epaTeamCount} />
         </section>
@@ -385,7 +385,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
         <section>
           <div className="mb-3.5 flex items-baseline gap-2.5">
             <h2 className={HEADING}>Hive tips</h2>
-            <span className="text-[11px] text-[#6b6f78]">
+            <span className="text-[11px] text-dim">
               expected per match, this robot alone
             </span>
           </div>
@@ -394,7 +394,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
               ["Auto tips", epa.tipsAuto],
               ["TeleOp tips", epa.tipsTele],
             ].map(([label, v]) => (
-              <div key={label} className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+              <div key={label} className="rounded-2xl border border-border bg-surface p-[18px]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted">{label}</span>
                 <div className="mt-2.5 text-[26px] font-bold tabular-nums" style={{ color: "var(--epa)" }}>
                   {fmt(v as number | null, 2)}
@@ -402,7 +402,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-[#6b6f78]">
+          <p className="mt-2 text-[11px] text-dim">
             FIRST counts tips per alliance, so each robot&apos;s share is estimated the way EPA splits points.
           </p>
         </section>
@@ -426,7 +426,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
         <section>
           <div className="mb-3.5 flex items-baseline gap-2.5">
             <h2 className={HEADING}>Season Trajectory</h2>
-            <span className="text-[11px] text-[#6b6f78]">EPA &amp; OPR per match</span>
+            <span className="text-[11px] text-dim">EPA &amp; OPR per match</span>
           </div>
           <TrajectoryChart points={traj.points} segments={traj.segments} />
         </section>
@@ -469,15 +469,15 @@ export default async function TeamPage({ params, searchParams }: Props) {
                 key={`${a.type}-${a.eventCode}-${i}`}
                 className="rounded-[10px] px-3.5 py-2.5 text-gold"
                 style={{
-                  border: "1px solid rgba(255,194,75,0.3)",
-                  background: "rgba(255,194,75,0.08)",
+                  border: "1px solid color-mix(in srgb, var(--gold) 30%, transparent)",
+                  background: "color-mix(in srgb, var(--gold) 8%, transparent)",
                 }}
               >
                 <div className="text-[14px] font-medium">{formatAward(a.type, a.placement)}</div>
                 <Link
                   prefetch={false}
                   href={`/events/${season}/${a.eventCode}`}
-                  className="mt-0.5 block max-w-[220px] truncate text-[12px] text-[#b89a52] no-underline hover:text-gold"
+                  className="mt-0.5 block max-w-[220px] truncate text-[12px] text-gold/70 no-underline hover:text-gold"
                   title={a.event?.name ?? a.eventCode}
                 >
                   {a.event?.name ?? a.eventCode}

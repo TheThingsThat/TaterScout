@@ -4,22 +4,22 @@ export const metadata: Metadata = { title: "About" };
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[18px] border border-[#1a1a1a] bg-surface px-[26px] py-6">
+    <div className="rounded-[18px] border border-border bg-surface px-[26px] py-6">
       <h2 className="m-0 text-[18px] font-semibold text-foreground">{title}</h2>
       <div className="mt-3 text-[15px] leading-[1.6] text-muted">{children}</div>
     </div>
   );
 }
 
-const STRONG = "font-semibold text-[#e7eaf0]";
+const STRONG = "font-semibold text-body";
 
 export default function AboutPage() {
   return (
     <div className="mx-auto max-w-[760px] px-5 pb-6 pt-[52px] sm:px-8">
-      <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+      <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-dim">
         About
       </div>
-      <h1 className="mt-3 text-[clamp(32px,4.5vw,52px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+      <h1 className="mt-3 text-[clamp(32px,4.5vw,52px)] font-semibold tracking-[-0.01em] text-heading">
         About TaterScout
       </h1>
       <p className="mt-[18px] text-[17px] leading-[1.6] text-muted">
@@ -129,7 +129,7 @@ export default function AboutPage() {
         </Card>
       </div>
 
-      <p className="mt-7 text-[13px] text-[#6b6f78]">
+      <p className="mt-7 text-[13px] text-dim">
         TaterScout is an independent project and is not affiliated with FIRST.
       </p>
     </div>

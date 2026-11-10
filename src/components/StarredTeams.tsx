@@ -7,7 +7,7 @@ import SearchBar from "./SearchBar";
 import TeamTable, { hasEnded, isLive, useNow } from "./TeamTable";
 import { signInHref, useEndDemo, useMe } from "./useMe";
 
-const HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]";
+const HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-dim";
 function Shell({ children, count }: { children: React.ReactNode; count?: number }) {
   return (
     <section className="mx-auto max-w-[1240px] px-5 pt-12 sm:px-8">
@@ -23,8 +23,8 @@ function Shell({ children, count }: { children: React.ReactNode; count?: number 
 
 function Empty({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return (
-    <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-6 py-10 text-center sm:px-10">
-      <div className="text-[20px] font-semibold text-[#f7f8fa]">{title}</div>
+    <div className="rounded-[20px] border border-border bg-surface px-6 py-10 text-center sm:px-10">
+      <div className="text-[20px] font-semibold text-heading">{title}</div>
       <p className="mx-auto mt-2 max-w-[460px] text-[14px] leading-[1.55] text-muted">{body}</p>
       {action}
       <div className="mx-auto mt-6 max-w-[460px] text-left">
@@ -82,7 +82,7 @@ export default function StarredTeams() {
   if (me === undefined) {
     return (
       <Shell>
-        <div className="h-[180px] animate-pulse rounded-[20px] border border-[#1a1a1a] bg-surface" />
+        <div className="h-[180px] animate-pulse rounded-[20px] border border-border bg-surface" />
       </Shell>
     );
   }
@@ -157,7 +157,7 @@ export default function StarredTeams() {
           ))
         }
       />
-      <p className="mt-2.5 text-[12px] text-[#6b6f78]">
+      <p className="mt-2.5 text-[12px] text-dim">
         World rank is by EPA. Countdowns run to the start of each event&apos;s first day at the venue.
       </p>
     </Shell>

@@ -23,33 +23,22 @@ const url = () => process.env.NEXT_PUBLIC_CONVEX_URL!;
 // in the query args only, never the cache key.
 const secret = () => process.env.SYNC_SECRET!;
 
-/** Thrown inside the cache to return a result without storing it. */
-class Uncached<T> {
-  constructor(readonly v: T) {}
-}
-
 /**
- * Past seasons are seeded once, possibly after their pages were first visited, so
- * a "not found" for one is never cached (it would hide freshly seeded data for the
- * whole TTL), and their keys carry a version that retires anything cached before.
+ * Past seasons change only through a manual reseed. Their keys carry a version:
+ * bump it after reseeding one so stale entries, cached "not found"s included, are
+ * retired at once instead of after the 1-day TTL.
  */
 const PAST = "s2";
 
 async function cq<T>(key: (string | number)[], ttl: number, fn: () => Promise<T>) {
   const season = typeof key[1] === "number" ? key[1] : CURRENT_SEASON;
-  const past = season < CURRENT_SEASON;
   try {
     return await unstable_cache(
-      async (): Promise<{ v: T }> => {
-        const v = await fn();
-        if (past && v == null) throw new Uncached(v);
-        return { v };
-      },
-      ["convex-site", ...(past ? [PAST] : []), ...key.map(String)],
+      async (): Promise<{ v: T }> => ({ v: await fn() }),
+      ["convex-site", ...(season < CURRENT_SEASON ? [PAST] : []), ...key.map(String)],
       { revalidate: ttl },
     )();
-  } catch (e) {
-    if (e instanceof Uncached) return { v: e.v as T };
+  } catch {
     return null;
   }
 }

@@ -6,13 +6,13 @@ const EPA = "var(--epa)";
 function Bar({ pct }: { pct: number }) {
   return (
     <>
-      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-[#161616]">
+      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
         <div
           className="h-full rounded-full"
           style={{ width: `${pct}%`, background: EPA }}
         />
       </div>
-      <div className="mt-1.5 text-[11px] text-[#6b6f78]">
+      <div className="mt-1.5 text-[11px] text-dim">
         Top {Math.max(0.1, 100 - pct).toFixed(pct > 99 ? 1 : 0)}%
       </div>
     </>
@@ -40,13 +40,13 @@ function Component({
 }) {
   const pct = rank !== null ? rankPercentile(rank, teamCount) : 0;
   return (
-    <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+    <div className="rounded-2xl border border-border bg-surface p-[18px]">
       <Label>{label}</Label>
       <div className="mt-2.5 flex items-baseline gap-2">
         <span className="text-[26px] font-bold tabular-nums" style={{ color: EPA }}>
           {fmt(value)}
         </span>
-        <span className="text-[12px] text-[#6b6f78]">
+        <span className="text-[12px] text-dim">
           {rank !== null ? ordinal(rank) : "—"}
         </span>
       </div>
@@ -65,14 +65,14 @@ export default function EpaTiles({
   const pct = team.rkEpa !== null ? rankPercentile(team.rkEpa, teamCount) : 0;
   return (
     <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-      <div className="col-span-2 rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+      <div className="col-span-2 rounded-2xl border border-border bg-surface p-[18px]">
         <div className="flex items-baseline justify-between">
           <Label>Total EPA</Label>
           {/* `n` is the rating's sample size: qualification matches with a full
               2v2 field. Playoffs and robot-short matches are excluded, so this
               can read lower than the team's total matches played. */}
           <span
-            className="text-[11px] text-[#6b6f78]"
+            className="text-[11px] text-dim"
             title="Qualification matches with a full alliance on both sides — the sample behind this rating"
           >
             {team.n} rated matches
@@ -82,7 +82,7 @@ export default function EpaTiles({
           <span className="text-[34px] font-bold tabular-nums" style={{ color: EPA }}>
             {fmt(team.epa)}
           </span>
-          <span className="text-[12px] text-[#6b6f78]">
+          <span className="text-[12px] text-dim">
             {team.rkEpa !== null ? ordinal(team.rkEpa) : "—"}
             {teamCount ? ` / ${teamCount.toLocaleString()}` : ""}
           </span>

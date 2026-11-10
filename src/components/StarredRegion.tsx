@@ -9,9 +9,9 @@ import type { RegionResponse } from "@/app/api/region/route";
 import TeamTable, { hasEnded, useNow } from "./TeamTable";
 import { useMe } from "./useMe";
 
-const HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]";
+const HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-dim";
 const SELECT =
-  "cursor-pointer rounded-full border border-[#232323] bg-[#0c0c0c] py-[7px] pl-3.5 pr-8 text-[13px] text-foreground outline-none focus:border-accent";
+  "cursor-pointer rounded-full border border-border-strong bg-input py-[7px] pl-3.5 pr-8 text-[13px] text-foreground outline-none focus:border-accent";
 
 /** Star a region (or clear it with null), updating the shared `mine` query at once. */
 export function useSetRegion() {
@@ -39,12 +39,12 @@ function RegionSelect({ regions, value, onPick }: { regions: string[]; value: st
       >
         {!value && <option value="">Choose a region…</option>}
         {regions.map((r) => (
-          <option key={r} value={r} style={{ background: "#0c0c0c" }}>
+          <option key={r} value={r} style={{ background: "var(--input)" }}>
             {r}
           </option>
         ))}
       </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-[#6b6f78]">▼</span>
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-dim">▼</span>
     </div>
   );
 }
@@ -89,7 +89,7 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
     return (
       <section className="mx-auto max-w-[1240px] px-5 pt-12 sm:px-8">
         <h2 className={`mb-4 ${HEADING}`}>Starred region</h2>
-        <div className="h-[72px] animate-pulse rounded-[20px] border border-[#1a1a1a] bg-surface" />
+        <div className="h-[72px] animate-pulse rounded-[20px] border border-border bg-surface" />
       </section>
     );
   if (!me || me.isDemo) return null;
@@ -98,7 +98,7 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
     return (
       <section className="mx-auto max-w-[1240px] px-5 pt-12 sm:px-8">
         <h2 className={`mb-4 ${HEADING}`}>Starred region</h2>
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-[#1a1a1a] bg-surface px-5 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-border bg-surface px-5 py-5">
           <p className="text-[14px] text-muted">Star a region to follow its top 10 teams here.</p>
           <RegionSelect regions={regions} value="" onPick={(r) => void setRegion(r)} />
         </div>
@@ -124,7 +124,7 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
           <RegionSelect regions={regions.includes(region) ? regions : [region, ...regions]} value={region} onPick={(r) => void setRegion(r)} />
           <button
             onClick={() => void setRegion(null)}
-            className="rounded-full border border-[#232323] px-3 py-[7px] text-[13px] text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground"
+            className="rounded-full border border-border-strong px-3 py-[7px] text-[13px] text-muted transition-colors hover:border-border-hover hover:text-foreground"
           >
             Unstar
           </button>
@@ -139,7 +139,7 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
           footer={missing > 0 && (failed ? <>Couldn&apos;t load {missing === 1 ? "a team" : `${missing} teams`}. {retry}</> : null)}
         />
       ) : (
-        <div className="rounded-[20px] border border-[#1a1a1a] bg-surface px-5 py-6 text-[13px] text-[#6b6f78]">
+        <div className="rounded-[20px] border border-border bg-surface px-5 py-6 text-[13px] text-dim">
           {failed ? (
             <>Couldn&apos;t load {region}. {retry}</>
           ) : shown ? (

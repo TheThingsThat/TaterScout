@@ -7,7 +7,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { signInHref, useEndDemo, useMe } from "./useMe";
 
 const ITEM =
-  "block w-full rounded-lg px-3 py-2 text-left text-[13px] text-[#cfd3da] no-underline transition-colors hover:bg-[#161616] hover:text-foreground";
+  "block w-full rounded-lg px-3 py-2 text-left text-[13px] text-body no-underline transition-colors hover:bg-surface-2 hover:text-foreground";
 const PILL_W = "w-[72px]";
 
 /** Top-right of the site header: "Sign in", or the signed-in visitor's menu. */
@@ -45,14 +45,14 @@ export default function AccountMenu() {
 
   // Only a visitor with a token loads (useMe), so this is the avatar's footprint
   // and the header doesn't shift.
-  if (me === undefined) return <div aria-hidden className="h-8 w-8 shrink-0 rounded-full bg-[#111]" />;
+  if (me === undefined) return <div aria-hidden className="h-8 w-8 shrink-0 rounded-full bg-surface-2" />;
 
   if (me === null) {
     if (path === "/sign-in") return <div aria-hidden className={`h-8 ${PILL_W} shrink-0`} />;
     return (
       <button
         onClick={() => router.push(signInHref())}
-        className={`h-8 ${PILL_W} shrink-0 whitespace-nowrap rounded-full border border-[#2a2a2a] text-center text-[13px] text-foreground transition-colors hover:border-[#444]`}
+        className={`h-8 ${PILL_W} shrink-0 whitespace-nowrap rounded-full border border-border-strong text-center text-[13px] text-foreground transition-colors hover:border-border-hover`}
       >
         Sign in
       </button>
@@ -88,8 +88,8 @@ export default function AccountMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${label}`}
-        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[#2a2a2a] bg-[#111] text-[13px] font-semibold text-foreground transition-colors hover:border-[#444]"
-        style={me.isDemo ? { borderColor: "rgba(255,194,75,0.5)", color: "#ffc24b" } : undefined}
+        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border-strong bg-surface-2 text-[13px] font-semibold text-foreground transition-colors hover:border-border-hover"
+        style={me.isDemo ? { borderColor: "color-mix(in srgb, var(--gold) 50%, transparent)", color: "var(--gold)" } : undefined}
       >
         {me.image && !me.isDemo ? (
           // Google profile photos come from a host we don't proxy; a plain img is fine here.
@@ -102,27 +102,27 @@ export default function AccountMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+8px)] z-[70] w-[240px] rounded-xl border border-[#232323] bg-[#0b0b0b] p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]"
+          className="absolute right-0 top-[calc(100%+8px)] z-[70] w-[240px] rounded-xl border border-border-strong bg-input p-1.5 shadow-[0_12px_40px_var(--shadow)]"
         >
-          <div className="border-b border-[#1a1a1a] px-3 pb-2.5 pt-2">
+          <div className="border-b border-border px-3 pb-2.5 pt-2">
             {me.isDemo ? (
               <>
                 <div className="text-[13px] font-medium text-gold">Demo session</div>
-                <div className="mt-0.5 text-[12px] text-[#6b6f78]">
+                <div className="mt-0.5 text-[12px] text-dim">
                   Throwaway data. Create an account to star teams.
                 </div>
               </>
             ) : (
               <>
                 <div className="truncate text-[13px] font-medium text-foreground">{label}</div>
-                {me.name && me.email && <div className="truncate text-[12px] text-[#6b6f78]">{me.email}</div>}
+                {me.name && me.email && <div className="truncate text-[12px] text-dim">{me.email}</div>}
               </>
             )}
           </div>
           <div className="pt-1.5">
             {!me.isDemo && (
               <Link href="/" role="menuitem" className={ITEM} onClick={close}>
-                Starred teams <span className="text-[#6b6f78]">({me.teams.length})</span>
+                Starred teams <span className="text-dim">({me.teams.length})</span>
               </Link>
             )}
             <Link href="/scout" role="menuitem" className={ITEM} onClick={close}>

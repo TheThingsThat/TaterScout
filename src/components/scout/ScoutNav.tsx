@@ -8,7 +8,7 @@ export default function ScoutNav() {
   const { isAuthenticated } = useConvexAuth();
   const { signOut } = useAuthActions();
   return (
-    <header className="sticky top-0 z-40 border-b border-[#161616] bg-black/80 backdrop-blur-[14px]">
+    <header className="sticky top-0 z-40 border-b border-line bg-background/80 backdrop-blur-[14px]">
       <div className="mx-auto flex max-w-[900px] items-center justify-between px-4 py-3">
         <Link href="/scout" className="flex items-center gap-2 no-underline">
           <span className="font-mono text-[13px] font-bold tracking-[0.2em] text-foreground">
@@ -25,7 +25,7 @@ export default function ScoutNav() {
           {isAuthenticated && (
             <button
               onClick={() => signOut()}
-              className="rounded-lg border border-[#232323] px-3 py-1.5 text-muted transition-colors hover:border-[#3a3a3a] hover:text-foreground"
+              className="rounded-lg border border-border-strong px-3 py-1.5 text-muted transition-colors hover:border-border-hover hover:text-foreground"
             >
               Sign out
             </button>

@@ -84,7 +84,7 @@ export default async function RankingsPage({ searchParams }: Props) {
   const arrow = (key: SortKey) =>
     key === sort ? (dir === "desc" ? " ↓" : " ↑") : "";
   const colColor = (kind: "epa" | "opr", active: boolean) =>
-    active ? (kind === "epa" ? "#2f8bff" : "#3ecf76") : "#6b6f78";
+    active ? (kind === "epa" ? "var(--epa)" : "var(--opr)") : "var(--dim)";
 
   const cell = (r: TeamRanking, key: SortKey, kind: "epa" | "opr") => {
     const active = key === sort;
@@ -100,7 +100,7 @@ export default async function RankingsPage({ searchParams }: Props) {
   };
 
   const pagerBtn = (disabled: boolean) =>
-    `rounded-md border border-[#1a1a1a] px-2 py-1 ${
+    `rounded-md border border-border px-2 py-1 ${
       disabled ? "pointer-events-none opacity-40" : "hover:text-foreground"
     }`;
 
@@ -108,10 +108,10 @@ export default async function RankingsPage({ searchParams }: Props) {
     <div className="mx-auto max-w-[1240px] px-5 pb-6 pt-10 sm:px-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6f78]">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-dim">
             Leaderboard
           </div>
-          <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-[#f7f8fa]">
+          <h1 className="mt-2.5 text-[clamp(32px,4vw,46px)] font-semibold tracking-[-0.01em] text-heading">
             Rankings
           </h1>
           <p className="mt-2 text-[14px] text-muted">
@@ -127,7 +127,7 @@ export default async function RankingsPage({ searchParams }: Props) {
                 style={
                   s === season
                     ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#fff", fontWeight: 500 }
-                    : { border: "1px solid #232323", color: "#9aa0aa" }
+                    : { border: "1px solid var(--border-strong)", color: "var(--muted)" }
                 }
               >
                 {seasonLabel(s)}
@@ -136,7 +136,7 @@ export default async function RankingsPage({ searchParams }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-[#6b6f78]">
+          <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
             Region
           </span>
           <RegionSelect regions={regions} value={region} />
@@ -144,18 +144,18 @@ export default async function RankingsPage({ searchParams }: Props) {
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-[18px] border border-[#1a1a1a] bg-surface">
+      <div className="mt-6 overflow-hidden rounded-[18px] border border-border bg-surface">
         <div className="ts-scroll overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-[14px]">
             <thead>
-              <tr className="border-b border-[#1f1f1f]">
-                <th className="px-4 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+              <tr className="border-b border-border">
+                <th className="px-4 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                   #
                 </th>
-                <th className="px-4 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+                <th className="px-4 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                   Team
                 </th>
-                <th className="px-3 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+                <th className="px-3 py-3.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                   Region
                 </th>
                 {COLS.map((c) => (
@@ -176,9 +176,9 @@ export default async function RankingsPage({ searchParams }: Props) {
               {rows.map((r, i) => (
                 <tr
                   key={r.number}
-                  className="border-b border-[#141414] transition-colors last:border-0 hover:bg-[#101010]"
+                  className="border-b border-line transition-colors last:border-0 hover:bg-hover"
                 >
-                  <td className="px-4 py-[11px] font-mono text-[#6b6f78]">
+                  <td className="px-4 py-[11px] font-mono text-dim">
                     {(curPage - 1) * PAGE_SIZE + i + 1}
                   </td>
                   <td className="px-4 py-[11px]">
@@ -187,18 +187,18 @@ export default async function RankingsPage({ searchParams }: Props) {
                       href={`/teams/${r.number}?season=${season}`}
                       className="no-underline hover:text-accent"
                     >
-                      <span className="font-mono text-[#6b6f78]">{r.number}</span>{" "}
-                      <span className="font-medium text-[#e7eaf0]">{r.name}</span>
+                      <span className="font-mono text-dim">{r.number}</span>{" "}
+                      <span className="font-medium text-body">{r.name}</span>
                     </Link>
                   </td>
-                  <td className="px-3 py-[11px] text-[#8a90a0]">{r.region ?? "—"}</td>
+                  <td className="px-3 py-[11px] text-muted">{r.region ?? "—"}</td>
                   {COLS.map((c) => cell(r, c.key, c.kind))}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between gap-3 border-t border-[#1a1a1a] px-4 py-[13px] text-[12px] text-[#6b6f78]">
+        <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-[13px] text-[12px] text-dim">
           <span>
             EPA &amp; no-penalty OPR computed by TaterScout from {seasonLabel(season)}{" "}
             match data.{ratingsCoverageNote(season) ? ` ${ratingsCoverageNote(season)}` : ""}

@@ -138,16 +138,41 @@ export default defineSchema({
     workspaceId: v.id("workspaces"),
     teamNumber: v.number(),
     memberId: v.id("members"),
-    farAuto: v.boolean(),
-    farTele: v.boolean(),
-    nearAuto: v.boolean(),
-    nearTele: v.boolean(),
-    canPark: v.boolean(),
-    canTilt: v.boolean(),
-    canClimb: v.boolean(),
+    // BIOBUZZ pit form. Optional only because reports saved by the old form lack them.
+    hasAuto: v.optional(v.boolean()),
+    autoCount: v.optional(v.number()), // drawings live in pitAutos (read only on demand)
+    flower: v.optional(v.boolean()), // can score in the FLOWERS
+    scoring: v.optional(v.union(v.literal("pollen"), v.literal("pollenNectar"))),
+    photoId: v.optional(v.id("_storage")), // robot photo, compressed on the phone
     robotStatus: v.union(v.literal("full"), v.literal("minor"), v.literal("major")),
     notes: v.optional(v.string()),
     updatedAt: v.number(),
+    // DECODE (2025) pit form fields, kept only so test reports still validate until
+    // they're purged (workspaces.purgeSeason); nothing writes them any more.
+    farAuto: v.optional(v.boolean()),
+    farTele: v.optional(v.boolean()),
+    nearAuto: v.optional(v.boolean()),
+    nearTele: v.optional(v.boolean()),
+    canPark: v.optional(v.boolean()),
+    canTilt: v.optional(v.boolean()),
+    canClimb: v.optional(v.boolean()),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_team", ["workspaceId", "teamNumber"]),
+
+  // A team's auto drawings, apart from pitReports so the workspace-wide queries that
+  // read every pit report don't pull every drawing. `strokes` is JSON number[][], each
+  // stroke a flat [x, y, x, y, …] list on a 0–1000 grid over the field (lib/autoDraw.ts).
+  pitAutos: defineTable({
+    workspaceId: v.id("workspaces"),
+    teamNumber: v.number(),
+    autos: v.array(
+      v.object({
+        name: v.string(),
+        side: v.union(v.literal("red"), v.literal("blue")),
+        strokes: v.string(),
+      }),
+    ),
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_team", ["workspaceId", "teamNumber"]),
@@ -267,11 +292,9 @@ export default defineSchema({
         s: v.union(v.string(), v.null()),
       }),
     ),
-    // Rows of [dtMin, localEventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, num?, series?].
-    // Written as a JSON string, about half the size of the array form. `points`
-    // is the older form; rows keep it until they are next written.
-    pointsJson: v.optional(v.string()),
-    points: v.optional(v.array(v.array(v.union(v.number(), v.null())))),
+    // Rows of [dtMin, localEventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, num?, series?],
+    // as a JSON string: about half the size of the array form rows once used.
+    pointsJson: v.string(),
   }).index("by_season_team", ["season", "team"]),
 
   // One doc per (season, event): team -> [preTot, preAuto, postTot, postAuto, oprNp, oprAuto].

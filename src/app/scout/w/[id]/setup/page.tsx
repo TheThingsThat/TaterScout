@@ -9,9 +9,9 @@ import { toast } from "sonner";
 import { formatDate, locationStr } from "@/lib/format";
 import { errorMessage } from "@/lib/scoutError";
 
-const CARD = "rounded-2xl border border-[#1a1a1a] bg-surface p-5";
+const CARD = "rounded-2xl border border-border bg-surface p-5";
 const INPUT =
-  "w-full rounded-xl border border-[#232323] bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-[#3a3a3a]";
+  "w-full rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-border-hover";
 
 interface EventResult {
   code: string;
@@ -168,13 +168,13 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
             <button
               onClick={() => importCode(workspace.eventCode)}
               disabled={importingCode != null}
-              className="rounded-xl border border-[#232323] px-3.5 py-2 text-[13px] text-muted hover:border-[#3a3a3a] hover:text-foreground disabled:opacity-60"
+              className="rounded-xl border border-border-strong px-3.5 py-2 text-[13px] text-muted hover:border-border-hover hover:text-foreground disabled:opacity-60"
             >
               {importingCode ? "Importing…" : "Re-import"}
             </button>
             <button
               onClick={() => setChanging(true)}
-              className="rounded-xl border border-[#232323] px-3.5 py-2 text-[13px] text-muted hover:border-[#3a3a3a] hover:text-foreground"
+              className="rounded-xl border border-border-strong px-3.5 py-2 text-[13px] text-muted hover:border-border-hover hover:text-foreground"
             >
               Change event
             </button>
@@ -194,7 +194,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
               ← keep {workspace.eventName || workspace.eventCode}
             </button>
           )}
-          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
             {searching ? (
               <div className="px-4 py-6 text-center text-sm text-muted">Searching…</div>
             ) : results.length === 0 ? (
@@ -207,11 +207,11 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
                   key={ev.code}
                   onClick={() => importCode(ev.code, ev.name)}
                   disabled={importingCode != null}
-                  className="flex w-full items-center justify-between gap-3 border-t border-[#141414] px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-[#101010] disabled:opacity-60"
+                  className="flex w-full items-center justify-between gap-3 border-t border-line px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-hover disabled:opacity-60"
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-[#e7eaf0]">{ev.name}</div>
-                    <div className="truncate text-[12px] text-[#6b6f78]">
+                    <div className="truncate font-medium text-body">{ev.name}</div>
+                    <div className="truncate text-[12px] text-dim">
                       {ev.code}
                       {locationStr(ev.location) ? ` · ${locationStr(ev.location)}` : ""}
                       {ev.start ? ` · ${formatDate(ev.start)}` : ""}
@@ -257,7 +257,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
                 className={INPUT}
               />
               {teamMatches.length > 0 && (
-                <div className="overflow-hidden rounded-xl border border-[#1f1f1f]">
+                <div className="overflow-hidden rounded-xl border border-border">
                   {teamMatches.map((t) => (
                     <button
                       key={t.teamNumber}
@@ -266,7 +266,7 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
                         setTeamQuery("");
                         toast.success(`You're scouting for ${t.teamNumber}`);
                       }}
-                      className="flex w-full items-center gap-2 border-t border-[#141414] px-3.5 py-2.5 text-left first:border-t-0 hover:bg-[#101010]"
+                      className="flex w-full items-center gap-2 border-t border-line px-3.5 py-2.5 text-left first:border-t-0 hover:bg-hover"
                     >
                       <span className="font-mono text-[13px] text-muted">{t.teamNumber}</span>
                       <span className="truncate text-[14px] text-foreground">{t.name}</span>

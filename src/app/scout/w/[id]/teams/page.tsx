@@ -7,10 +7,78 @@ import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/scoutError";
+import type { FunctionReturnType } from "convex/server";
+import { decodeStrokes } from "@/lib/autoDraw";
+import { AutoView } from "@/components/scout/AutoDrawing";
 
 const fmt = (x: number | null | undefined) => (x == null ? "—" : x.toFixed(1));
 const PIT_CLASS: Record<string, string> = { full: "text-teal", minor: "text-gold", major: "text-accent" };
 const PIT_LABEL: Record<string, string> = { full: "OK", minor: "minor", major: "major" };
+
+type Pit = NonNullable<FunctionReturnType<typeof api.teams.detail>>["pit"];
+
+const Chip = ({ children }: { children: React.ReactNode }) => (
+  <span className="rounded bg-surface px-2 py-1 text-foreground">{children}</span>
+);
+
+/** Pit answers, the robot photo and the auto drawings (tap one to enlarge). */
+function PitSummary({ pit, teamNumber }: { pit: NonNullable<Pit>; teamNumber: number }) {
+  const [big, setBig] = useState<{ kind: "photo" } | { kind: "auto"; i: number } | null>(null);
+  const autos = pit.autos ?? [];
+  return (
+    <div className="mt-4">
+      <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Pit scouting</div>
+      <div className="flex gap-3">
+        {pit.photoUrl && (
+          <button type="button" onClick={() => setBig({ kind: "photo" })} className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a Convex file URL */}
+            <img src={pit.photoUrl} alt={`Team ${teamNumber} robot`} className="h-20 w-20 rounded-xl object-cover" />
+          </button>
+        )}
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            {pit.hasAuto != null && <Chip>{pit.hasAuto ? `auto · ${autos.length} drawn` : "no auto"}</Chip>}
+            {pit.flower != null && <Chip>{pit.flower ? "flowers" : "no flowers"}</Chip>}
+            {pit.scoring && <Chip>{pit.scoring === "pollenNectar" ? "pollen + nectar" : "pollen only"}</Chip>}
+          </div>
+          <div className={`mt-1.5 text-[12px] ${PIT_CLASS[pit.robotStatus]}`}>Robot: {PIT_LABEL[pit.robotStatus]}</div>
+          {pit.notes && <div className="mt-1 whitespace-pre-wrap text-[12px] text-muted">{pit.notes}</div>}
+        </div>
+      </div>
+      {autos.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          {autos.map((a, i) => (
+            <button key={i} type="button" onClick={() => setBig({ kind: "auto", i })} className="text-left">
+              <AutoView strokes={decodeStrokes(a.strokes)} />
+              <div className="mt-1 flex items-center gap-1.5 text-[12px]">
+                <span className="h-2 w-2 rounded-full" style={{ background: a.side === "red" ? "var(--red)" : "var(--blue)" }} />
+                <span className="truncate">{a.name}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {big && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4" onClick={() => setBig(null)}>
+          <div className="w-full max-w-[640px]" onClick={(e) => e.stopPropagation()}>
+            {big.kind === "photo" && pit.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a Convex file URL
+              <img src={pit.photoUrl} alt={`Team ${teamNumber} robot`} className="max-h-[80vh] w-full rounded-xl object-contain" />
+            ) : big.kind === "auto" && autos[big.i] ? (
+              <>
+                <AutoView strokes={decodeStrokes(autos[big.i].strokes)} />
+                <div className="mt-2 text-[14px] text-[#f4f5f7]">{autos[big.i].name} · {autos[big.i].side}</div>
+              </>
+            ) : null}
+            <button type="button" onClick={() => setBig(null)} className="mt-3 w-full rounded-xl border border-[#2a2a2a] py-2.5 text-[14px] text-[#9aa0aa]">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function DetailModal({
   workspaceId,
@@ -41,7 +109,7 @@ function DetailModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[85vh] w-full max-w-[520px] overflow-y-auto rounded-t-2xl border border-[#232323] bg-[#0c0c0c] p-5 sm:rounded-2xl"
+        className="max-h-[85vh] w-full max-w-[520px] overflow-y-auto rounded-t-2xl border border-border-strong bg-input p-5 sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {detail === undefined || detail.team == null ? (
@@ -66,43 +134,26 @@ function DetailModal({
 
             {/* Stats */}
             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-xl border border-[#1a1a1a] bg-surface p-2.5">
+              <div className="rounded-xl border border-border bg-surface p-2.5">
                 <div className="text-[18px] font-bold tabular-nums" style={{ color: "var(--epa)" }}>
                   {fmt(detail.team.epa)}
                 </div>
                 <div className="text-[10px] text-muted">EPA</div>
               </div>
-              <div className="rounded-xl border border-[#1a1a1a] bg-surface p-2.5">
+              <div className="rounded-xl border border-border bg-surface p-2.5">
                 <div className="text-[18px] font-bold tabular-nums" style={{ color: "var(--opr)" }}>
                   {fmt(detail.team.oprNp)}
                 </div>
                 <div className="text-[10px] text-muted">OPR</div>
               </div>
-              <div className="rounded-xl border border-[#1a1a1a] bg-surface p-2.5">
+              <div className="rounded-xl border border-border bg-surface p-2.5">
                 <div className="text-[18px] font-bold tabular-nums">{detail.reports.length}</div>
                 <div className="text-[10px] text-muted">reports</div>
               </div>
             </div>
 
             {/* Pit */}
-            {detail.pit && (
-              <div className="mt-4">
-                <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Pit scouting</div>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  {detail.pit.nearAuto && <span className="rounded bg-surface px-2 py-1 text-foreground">near auto</span>}
-                  {detail.pit.nearTele && <span className="rounded bg-surface px-2 py-1 text-foreground">near teleop</span>}
-                  {detail.pit.farAuto && <span className="rounded bg-surface px-2 py-1 text-foreground">far auto</span>}
-                  {detail.pit.farTele && <span className="rounded bg-surface px-2 py-1 text-foreground">far teleop</span>}
-                  {detail.pit.canPark && <span className="rounded bg-surface px-2 py-1 text-foreground">park</span>}
-                  {detail.pit.canTilt && <span className="rounded bg-surface px-2 py-1 text-foreground">tilt</span>}
-                  {detail.pit.canClimb && <span className="rounded bg-surface px-2 py-1 text-foreground">climb</span>}
-                </div>
-                <div className={`mt-1.5 text-[12px] ${PIT_CLASS[detail.pit.robotStatus]}`}>
-                  Robot: {PIT_LABEL[detail.pit.robotStatus]}
-                </div>
-                {detail.pit.notes && <div className="mt-1 text-[12px] text-muted">{detail.pit.notes}</div>}
-              </div>
-            )}
+            {detail.pit && <PitSummary pit={detail.pit} teamNumber={teamNumber} />}
 
             {/* Averages */}
             {detail.averages ? (
@@ -120,7 +171,7 @@ function DetailModal({
                 </div>
                 <div className="mt-2 space-y-1.5 text-[11px]">
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="w-14 text-[#6b6f78]">Auto</span>
+                    <span className="w-14 text-dim">Auto</span>
                     {(["far", "near", "none"] as const).map((z) => (
                       <span key={z} className="rounded bg-surface px-2 py-1 text-muted">
                         {z}: <span className="text-foreground">{detail.averages!.autoZoneDist[z] ?? 0}</span>
@@ -128,7 +179,7 @@ function DetailModal({
                     ))}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="w-14 text-[#6b6f78]">TeleOp</span>
+                    <span className="w-14 text-dim">TeleOp</span>
                     {(["far", "near", "none"] as const).map((z) => (
                       <span key={z} className="rounded bg-surface px-2 py-1 text-muted">
                         {z}: <span className="text-foreground">{detail.averages!.teleopZoneDist[z] ?? 0}</span>
@@ -136,7 +187,7 @@ function DetailModal({
                     ))}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="w-14 text-[#6b6f78]">Endgame</span>
+                    <span className="w-14 text-dim">Endgame</span>
                     {(["park", "tilt", "climb", "none"] as const).map((p) => (
                       <span key={p} className="rounded bg-surface px-2 py-1 text-muted">
                         {p}: <span className="text-foreground">{detail.averages!.endgameDist[p] ?? 0}</span>
@@ -155,7 +206,7 @@ function DetailModal({
                 )}
               </div>
             ) : (
-              <div className="mt-4 rounded-xl border border-[#1a1a1a] bg-surface p-4 text-center text-[13px] text-muted">
+              <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-center text-[13px] text-muted">
                 No match reports yet.
               </div>
             )}
@@ -176,7 +227,7 @@ function DetailModal({
                         <button
                           onClick={() => onDelete(r._id, r.matchNumber)}
                           title="Delete report"
-                          className="ml-3 text-[16px] leading-none text-[#4a4f57] hover:text-accent"
+                          className="ml-3 text-[16px] leading-none text-faint hover:text-accent"
                         >
                           ×
                         </button>
@@ -201,14 +252,14 @@ function Teams({ id }: { id: Id<"workspaces"> }) {
 
   if (data === null)
     return (
-      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+      <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
         No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
       </div>
     );
   if (teams === undefined || data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teams.length === 0)
     return (
-      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+      <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
         No teams yet — an admin needs to import the event (Setup).
       </div>
     );
@@ -218,21 +269,21 @@ function Teams({ id }: { id: Id<"workspaces"> }) {
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-[18px] font-semibold">Teams ({teams.length})</h2>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         {teams.map((t) => (
           <button
             key={t._id}
             onClick={() => setSelected(t.teamNumber)}
-            className="flex w-full items-center gap-3 border-t border-[#141414] px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-[#101010]"
+            className="flex w-full items-center gap-3 border-t border-line px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-hover"
           >
             <span className="w-14 shrink-0 font-mono text-[13px] text-muted">{t.teamNumber}</span>
-            <span className="min-w-0 flex-1 truncate font-medium text-[#e7eaf0]">{t.name}</span>
+            <span className="min-w-0 flex-1 truncate font-medium text-body">{t.name}</span>
             <span className="hidden shrink-0 text-[12px] text-muted sm:inline">
               EPA {fmt(t.epa)} · OPR {fmt(t.oprNp)}
             </span>
             <span
               className={`hidden w-10 shrink-0 text-[10px] sm:inline ${
-                t.pitScouted ? PIT_CLASS[t.robotStatus ?? "full"] : "text-[#3a3f48]"
+                t.pitScouted ? PIT_CLASS[t.robotStatus ?? "full"] : "text-faint"
               }`}
               title="Pit scouting"
             >

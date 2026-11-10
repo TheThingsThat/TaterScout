@@ -1,11 +1,24 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
   --background: #000000;
-  --surface: #0a0a0a;
-  --border: #1a1a1a;
+  --surface: #0a0a0a; /* cards */
+  --surface-2: #161616; /* chips, pills, bars' empty track */
+  --input: #0c0c0c; /* fields, menus, sheets */
+  --hover: #101010; /* row hover */
+  --line: #141414; /* dividers inside a card */
+  --border: #1a1a1a; /* card edges */
+  --border-strong: #232323; /* controls, inputs */
+  --border-hover: #3a3a3a;
+  --heading: #f7f8fa;
   --foreground: #f4f5f7;
+  --body: #e7eaf0; /* body copy a step below headings */
   --muted: #9aa0aa;
+  --dim: #6b6f78; /* labels, captions */
+  --faint: #3a3f48; /* separators, placeholders */
+  --header: rgba(0, 0, 0, 0.7);
+  --shadow: rgba(0, 0, 0, 0.65); /* dropdown / menu drop shadow */
 
   --accent: #cd0e0e; /* brand red */
   --epa: #2f8bff;
@@ -16,12 +29,83 @@
   --blue: #4d8dff; /* match winner blue */
 }
 
+/* Light theme: chosen in the header (cookie → data-theme on <html>, set server-side
+   so there's no flash), else following the device. The two blocks must match. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --input: #ffffff;
+  --hover: #f2f4f7;
+  --line: #edf0f3;
+  --border: #e3e6eb;
+  --border-strong: #d4d9df;
+  --border-hover: #aeb5bf;
+  --heading: #0d1014;
+  --foreground: #121519;
+  --body: #22272e;
+  --muted: #4b525c;
+  --dim: #666d77;
+  --faint: #a3aab4;
+  --header: rgba(245, 246, 248, 0.82);
+  --shadow: rgba(15, 20, 30, 0.14);
+
+  --epa: #1d6fe5;
+  --opr: #168a43;
+  --gold: #a86b0f;
+  --teal: #0d8a7c;
+  --red: #dc2e3f;
+  --blue: #2563eb;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --background: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef0f3;
+    --input: #ffffff;
+    --hover: #f2f4f7;
+    --line: #edf0f3;
+    --border: #e3e6eb;
+    --border-strong: #d4d9df;
+    --border-hover: #aeb5bf;
+    --heading: #0d1014;
+    --foreground: #121519;
+    --body: #22272e;
+    --muted: #4b525c;
+    --dim: #666d77;
+    --faint: #a3aab4;
+    --header: rgba(245, 246, 248, 0.82);
+    --shadow: rgba(15, 20, 30, 0.14);
+  --shadow: rgba(15, 20, 30, 0.14);
+
+    --epa: #1d6fe5;
+    --opr: #168a43;
+    --gold: #a86b0f;
+    --teal: #0d8a7c;
+    --red: #dc2e3f;
+    --blue: #2563eb;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-input: var(--input);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-hover: var(--border-hover);
+  --color-heading: var(--heading);
   --color-foreground: var(--foreground);
+  --color-body: var(--body);
   --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-header: var(--header);
   --color-accent: var(--accent);
   --color-epa: var(--epa);
   --color-opr: var(--opr);
@@ -72,7 +156,7 @@ body {
   width: 8px;
 }
 .ts-scroll::-webkit-scrollbar-thumb {
-  background: #222;
+  background: var(--border-strong);
   border-radius: 8px;
 }
 

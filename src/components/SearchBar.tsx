@@ -155,7 +155,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
   return (
     <div ref={boxRef} className="relative w-full">
       <div
-        className={`flex items-center gap-2.5 rounded-full border border-[#232323] bg-[#0c0c0c] transition-colors focus-within:border-accent ${
+        className={`flex items-center gap-2.5 rounded-full border border-border-strong bg-input transition-colors focus-within:border-accent ${
           lg ? "px-[22px] py-[14px]" : "px-4 py-[9px]"
         }`}
       >
@@ -166,8 +166,8 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
           fill="none"
           className="shrink-0"
         >
-          <circle cx="11" cy="11" r="7" stroke="#6b6f78" strokeWidth="2" />
-          <path d="M20 20l-3.5-3.5" stroke="#6b6f78" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="11" cy="11" r="7" className="stroke-dim" strokeWidth="2" />
+          <path d="M20 20l-3.5-3.5" className="stroke-dim" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <input
           value={q}
@@ -179,22 +179,22 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
           onKeyDown={onKeyDown}
           placeholder="Search teams or events…"
           aria-label="Search teams or events"
-          className={`w-full bg-transparent text-foreground outline-none placeholder:text-[#6b6f78] ${
+          className={`w-full bg-transparent text-foreground outline-none placeholder:text-dim ${
             lg ? "text-[16px]" : "text-[14px]"
           }`}
         />
         {loading && (
-          <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#232323] border-t-accent" />
+          <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-strong border-t-accent" />
         )}
       </div>
 
       {showDrop && (
         <div
-          className="ts-scroll absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-[18px] border border-[#232323] bg-[#0a0a0a] text-left shadow-[0_24px_60px_rgba(0,0,0,0.7)]"
+          className="ts-scroll absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-[18px] border border-border-strong bg-surface text-left shadow-[0_24px_60px_var(--shadow)]"
           style={{ maxHeight: 360, overflowY: "auto" }}
         >
           {notFound ? (
-            <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">
+            <div className="px-4 py-3.5 text-[13px] text-dim">
               {numericHref ? (
                 <>Team <span className="font-mono text-foreground">{term}</span> not found.</>
               ) : (
@@ -202,7 +202,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
               )}
             </div>
           ) : results.length === 0 && !loading ? (
-            <div className="px-4 py-3.5 text-[13px] text-[#6b6f78]">No results.</div>
+            <div className="px-4 py-3.5 text-[13px] text-dim">No results.</div>
           ) : (
             <ul className="py-0">
               {results.map((h, i) => (
@@ -210,16 +210,16 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
                   <button
                     onMouseEnter={() => setActive(i)}
                     onClick={() => go(h.href)}
-                    className={`flex w-full items-center gap-3 border-t border-[#161616] px-4 py-[11px] text-left first:border-t-0 ${
-                      i === active ? "bg-[#121212]" : ""
+                    className={`flex w-full items-center gap-3 border-t border-line px-4 py-[11px] text-left first:border-t-0 ${
+                      i === active ? "bg-hover" : ""
                     }`}
                   >
                     <span
                       className="shrink-0 rounded-md px-[7px] py-[3px] font-mono text-[9px] font-bold uppercase tracking-[0.1em]"
                       style={
                         h.kind === "team"
-                          ? { background: "rgba(205,14,14,0.18)", color: "#ff7a7a" }
-                          : { background: "rgba(54,214,194,0.16)", color: "#56e0cf" }
+                          ? { background: "color-mix(in srgb, var(--accent) 18%, transparent)", color: "color-mix(in srgb, var(--red) 80%, var(--heading))" }
+                          : { background: "color-mix(in srgb, var(--teal) 16%, transparent)", color: "var(--teal)" }
                       }
                     >
                       {h.kind}
@@ -228,7 +228,7 @@ export default function SearchBar({ size = "sm" }: { size?: "sm" | "lg" }) {
                       <span className="block truncate text-[13px] text-foreground">
                         {h.primary}
                       </span>
-                      <span className="block truncate text-[11px] text-[#6b6f78]">
+                      <span className="block truncate text-[11px] text-dim">
                         {h.secondary}
                       </span>
                     </span>

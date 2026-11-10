@@ -15,8 +15,8 @@ export function matchKey(m: Match): string {
   return `${m.tournamentLevel}-${m.series}-${m.matchNum}`;
 }
 
-const RED = "#ff5d6c";
-const BLUE = "#4d8dff";
+const RED = "var(--red)";
+const BLUE = "var(--blue)";
 
 function AllianceCell({
   teams,
@@ -35,7 +35,7 @@ function AllianceCell({
   season: number;
   focusTeam?: number; // underlined, for a list following one team
 }) {
-  const color = won ? (side === "Red" ? RED : BLUE) : "#6b6f78";
+  const color = won ? (side === "Red" ? RED : BLUE) : "var(--dim)";
   return (
     <div
       className={`flex flex-col gap-0.5 ${
@@ -43,7 +43,7 @@ function AllianceCell({
       }`}
     >
       {allianceLabel && (
-        <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-[#52565e]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-dim">
           {allianceLabel}
         </span>
       )}
@@ -85,9 +85,9 @@ function RpDots({ rp, side }: { rp: MatchBreakdown["rp"]; side: "red" | "blue" }
           aria-hidden
           className="flex h-[16px] w-[16px] items-center justify-center rounded-full border font-mono text-[8px] font-bold leading-none"
           style={{
-            borderColor: c[side] ? color : "#3a3f48",
+            borderColor: c[side] ? color : "var(--faint)",
             background: c[side] ? color : "transparent",
-            color: c[side] ? "#fff" : "#5a5f68",
+            color: c[side] ? "#fff" : "var(--dim)",
           }}
         >
           {c.short}
@@ -139,21 +139,21 @@ function MatchRow({
 
   const b = m.breakdown;
   const row = (
-    <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 px-4 py-[11px] transition-colors hover:bg-[#101010]">
-      <span className="flex items-center gap-1 font-mono text-[12px] text-[#6b6f78]">
+    <div className="grid grid-cols-[48px_1fr] items-center gap-2.5 px-4 py-[11px] transition-colors hover:bg-hover">
+      <span className="flex items-center gap-1 font-mono text-[12px] text-dim">
         {matchCode(m)}
-        {b && <span className="text-[#3a3f48] transition-transform group-open:rotate-90">›</span>}
+        {b && <span className="text-faint transition-transform group-open:rotate-90">›</span>}
       </span>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <AllianceCell teams={red} side="Red" won={redWon} align="right" allianceLabel={allyLabel(red)} season={season} focusTeam={focusTeam} />
         {played ? (
           <div className="flex flex-col items-center gap-1">
             <div className="flex items-center justify-center gap-1.5 font-mono text-[14px] tabular-nums">
-              <span style={{ color: redWon ? RED : "#6b6f78", fontWeight: redWon ? 700 : 400 }}>
+              <span style={{ color: redWon ? RED : "var(--dim)", fontWeight: redWon ? 700 : 400 }}>
                 {redScore}
               </span>
-              <span className="text-[#3a3f48]">–</span>
-              <span style={{ color: blueWon ? BLUE : "#6b6f78", fontWeight: blueWon ? 700 : 400 }}>
+              <span className="text-faint">–</span>
+              <span style={{ color: blueWon ? BLUE : "var(--dim)", fontWeight: blueWon ? 700 : 400 }}>
                 {blueScore}
               </span>
             </div>
@@ -172,19 +172,19 @@ function MatchRow({
                 title="Predicted win probability"
               >
                 <span style={{ color: RED }}>{Math.round(winProb * 100)}%</span>
-                <span className="text-[#3a3f48]">–</span>
+                <span className="text-faint">–</span>
                 <span style={{ color: BLUE }}>{Math.round((1 - winProb) * 100)}%</span>
               </div>
             ) : null}
             {predicted != null ? (
               <span
-                className="whitespace-nowrap text-[11px] italic text-[#6b6f78]"
+                className="whitespace-nowrap text-[11px] italic text-dim"
                 title="Predicted start time (your local time)"
               >
                 ~<LocalClock ms={predicted} fallbackTimezone={timezone} />
               </span>
             ) : winProb == null ? (
-              <span className="text-[12px] text-[#6b6f78]">vs</span>
+              <span className="text-[12px] text-dim">vs</span>
             ) : null}
           </div>
         )}
@@ -193,7 +193,7 @@ function MatchRow({
     </div>
   );
 
-  const rowClass = "border-t border-[#141414] first:border-t-0";
+  const rowClass = "border-t border-line first:border-t-0";
   if (!b) return <div className={rowClass}>{row}</div>;
   return (
     <MatchDetails breakdown={b} totalRed={redScore} totalBlue={blueScore} className={rowClass}>
@@ -247,7 +247,7 @@ export default function MatchList({
           (a, b) => a.series - b.series || a.matchNum - b.matchNum,
         );
         const rows = (
-          <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
             {ms.map((m) => (
               <MatchRow
                 key={matchKey(m)}
@@ -264,7 +264,7 @@ export default function MatchList({
         );
         const label = (
           <>
-            {tournamentLevelLabel(k)} <span className="text-[#3a3f48]">({ms.length})</span>
+            {tournamentLevelLabel(k)} <span className="text-faint">({ms.length})</span>
           </>
         );
         // Qualification matches sit in a dropdown, open by default, so a long
@@ -276,7 +276,7 @@ export default function MatchList({
               defaultOpen
               gap="mb-2"
               header={
-                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
                   {label}
                 </span>
               }
@@ -287,7 +287,7 @@ export default function MatchList({
         }
         return (
           <div key={k}>
-            <h3 className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6f78]">
+            <h3 className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-dim">
               {label}
             </h3>
             {rows}
