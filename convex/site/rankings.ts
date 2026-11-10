@@ -1,7 +1,10 @@
-// Public season queries for the analytics site. All reads are index-bounded
-// point/range reads — no unbounded collects. Data is public; no auth.
+// Season queries for the analytics site. All reads are index-bounded
+// point/range reads — no unbounded collects. The data is public, but only the
+// Next server (behind its cache) may read it: each query takes the sync secret,
+// so nobody can loop these directly and burn the free plan's DB bandwidth.
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { requireSyncSecret } from "../sync/lib";
 import type { QueryCtx } from "../_generated/server";
 
 export const sortKey = v.union(
@@ -13,11 +16,20 @@ export const sortKey = v.union(
   v.literal("oprTele"),
 );
 type SortKey = "epa" | "epaAuto" | "epaTele" | "oprNp" | "oprAuto" | "oprTele";
+const RANK_FIELD = {
+  epa: "rkEpa",
+  epaAuto: "rkEpaAuto",
+  epaTele: "rkEpaTele",
+  oprNp: "rkOprNp",
+  oprAuto: "rkOprAuto",
+  oprTele: "rkOprTele",
+} as const;
 
 /** The season's small metadata doc (counts, regions, priors, sim, record). */
 export const meta = query({
-  args: { season: v.number() },
-  handler: async (ctx, { season }) => {
+  args: { secret: v.string(), season: v.number() },
+  handler: async (ctx, { secret, season }) => {
+    requireSyncSecret(secret);
     return await ctx.db
       .query("seasonMeta")
       .withIndex("by_season", (q) => q.eq("season", season))
@@ -87,6 +99,7 @@ function byValue<T extends TeamDocRow>(rows: T[], sort: SortKey, dir: "asc" | "d
  *  in memory so null-stat teams still appear at the tail like the file backend. */
 export const page = query({
   args: {
+    secret: v.string(),
     season: v.number(),
     sort: sortKey,
     dir: v.union(v.literal("asc"), v.literal("desc")),
@@ -95,6 +108,12 @@ export const page = query({
     pageSize: v.number(),
   },
   handler: async (ctx, a) => {
+    requireSyncSecret(a.secret);
+    // Callers only send integers; fractional ones would just be cache-missing
+    // aliases of a real page.
+    if (!Number.isInteger(a.page) || !Number.isInteger(a.pageSize)) {
+      return { rows: [], total: 0, page: 1, pages: 1 };
+    }
     const season = a.season;
     const ps = Math.min(Math.max(Math.floor(a.pageSize), 1), 100);
     const metaDoc = await ctx.db
@@ -104,7 +123,10 @@ export const page = query({
     if (!metaDoc) return { rows: [], total: 0, page: 1, pages: 1 };
 
     if (a.region == null) {
-      const total = metaDoc.sortCounts[a.sort] ?? 0;
+      // Teams first seen since the last daily rank reconcile are stored unranked but
+      // already counted in meta, so cap paging at the highest rank actually stored.
+      const last = await rankRange(ctx, season, a.sort, 1, Number.MAX_SAFE_INTEGER, "desc").first();
+      const total = Math.min(metaDoc.sortCounts[a.sort] ?? 0, last ? (last[RANK_FIELD[a.sort]] ?? 0) : 0);
       const pages = Math.max(1, Math.ceil(total / ps));
       const p = Math.min(Math.max(1, Math.floor(a.page)), pages);
       // desc = best-first = ascending rank; asc = mirrored range from the tail.
@@ -167,8 +189,9 @@ export const page = query({
 
 /** One team's leaderboard row (point read). */
 export const team = query({
-  args: { season: v.number(), team: v.number() },
-  handler: async (ctx, { season, team }) => {
+  args: { secret: v.string(), season: v.number(), team: v.number() },
+  handler: async (ctx, { secret, season, team }) => {
+    requireSyncSecret(secret);
     return await ctx.db
       .query("seasonTeams")
       .withIndex("by_season_team", (q) => q.eq("season", season).eq("team", team))
@@ -178,8 +201,9 @@ export const team = query({
 
 /** Rows for a bounded set of team numbers (event pages, scout import). */
 export const teams = query({
-  args: { season: v.number(), teams: v.array(v.number()) },
-  handler: async (ctx, { season, teams }) => {
+  args: { secret: v.string(), season: v.number(), teams: v.array(v.number()) },
+  handler: async (ctx, { secret, season, teams }) => {
+    requireSyncSecret(secret);
     if (teams.length > 250) throw new Error("Too many teams (max 250).");
     const out = [];
     for (const t of teams) {

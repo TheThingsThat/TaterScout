@@ -18,6 +18,11 @@ export interface RawMatch {
   bt: number;
   rrp: number[]; // red bonus RPs, positional (crawl.ts rpFlags); empty = unknown
   brp: number[]; // blue bonus RPs
+  // Per-alliance game-piece counts for seasons that rate them (crawl.ts
+  // COUNT_FIELDS, e.g. BIOBUZZ [auto hive tips, TeleOp hive tips]). Absent for
+  // other seasons and for matches crawled before counts were kept; empty = unknown.
+  rc?: number[];
+  bc?: number[];
 }
 
 export interface RawEvent {
@@ -57,6 +62,9 @@ export interface TeamRow {
   rkEpa: number | null;
   rkEpaAuto: number | null;
   rkEpaTele: number | null;
+  // Count EPA (compute.ts): expected hive tips a robot adds per match, BIOBUZZ only.
+  tipsAuto?: number | null;
+  tipsTele?: number | null;
 }
 
 // Highest no-penalty match score of the season (home-page "world record").

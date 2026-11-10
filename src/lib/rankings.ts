@@ -18,6 +18,8 @@ export interface TeamRanking {
   rkEpa: number | null;
   rkEpaAuto: number | null;
   rkEpaTele: number | null;
+  tipsAuto: number | null; // expected hive tips per match (BIOBUZZ), else null
+  tipsTele: number | null;
 }
 
 // Convex doc -> the site-wide TeamRanking shape.
@@ -38,6 +40,8 @@ function docToRanking(d: {
   rkOprNp: number | null;
   rkOprAuto: number | null;
   rkOprTele: number | null;
+  tipsAuto?: number | null;
+  tipsTele?: number | null;
 }): TeamRanking {
   return {
     number: d.team,
@@ -56,6 +60,8 @@ function docToRanking(d: {
     rkOprNp: d.rkOprNp,
     rkOprAuto: d.rkOprAuto,
     rkOprTele: d.rkOprTele,
+    tipsAuto: d.tipsAuto ?? null,
+    tipsTele: d.tipsTele ?? null,
   };
 }
 

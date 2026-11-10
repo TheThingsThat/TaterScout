@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
@@ -148,11 +149,19 @@ const STATUS_LABEL: Record<string, string> = { full: "OK", minor: "Minor", major
 const STATUS_CLASS: Record<string, string> = { full: "text-teal", minor: "text-gold", major: "text-accent" };
 
 function Pit({ id }: { id: Id<"workspaces"> }) {
-  const teams = useQuery(api.teams.list, { workspaceId: id });
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const mine = useQuery(api.assignments.mySchedule, { workspaceId: id });
+  // Member-gated queries throw for a non-member; wait until get() confirms access.
+  const ok = data ? { workspaceId: id } : "skip";
+  const teams = useQuery(api.teams.pitStatus, ok);
+  const mine = useQuery(api.assignments.mySchedule, ok);
   const [selected, setSelected] = useState<number | null>(null);
 
+  if (data === null)
+    return (
+      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+        No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
+      </div>
+    );
   if (teams === undefined || data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teams.length === 0)
     return (

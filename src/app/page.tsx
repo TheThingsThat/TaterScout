@@ -97,6 +97,7 @@ async function WorldRecord() {
               <span key={t.number}>
                 {i > 0 && <span className="text-[#5a513a]"> &amp; </span>}
                 <Link
+                  prefetch={false}
                   href={`/teams/${t.number}?season=${CURRENT_SEASON}`}
                   className="text-inherit no-underline hover:text-gold"
                 >
@@ -108,6 +109,7 @@ async function WorldRecord() {
           </div>
         </div>
         <Link
+          prefetch={false}
           href={`/events/${wr.season}/${wr.eventCode}`}
           className="relative flex flex-col justify-end overflow-hidden bg-gold p-7 no-underline"
         >

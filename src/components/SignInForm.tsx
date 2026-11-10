@@ -148,8 +148,8 @@ export default function SignInForm({ next }: { next: string }) {
             Try the demo — no sign-up
           </button>
           <p className="mt-2 text-center text-[12px] text-[#6b6f78]">
-            Explore scouting with throwaway data. Everything is deleted when you
-            close the tab.
+            Explore scouting with throwaway data. Everything is deleted shortly
+            after you close the tab.
           </p>
         </div>
       )}

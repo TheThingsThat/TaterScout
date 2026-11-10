@@ -36,14 +36,18 @@ export default function DemoBanner() {
     return () => clearInterval(id);
   }, [isDemo, start, touch]);
 
-  // Wipe on leave. `pagehide` (not `beforeunload`) is the event that still fires
-  // reliably on mobile, and sendBeacon survives the page going away where a
-  // normal fetch would be cancelled.
+  // Expire soon on leave. `pagehide` (not `beforeunload`) is the event that
+  // still fires reliably on mobile, and sendBeacon survives the page going away
+  // where a normal fetch would be cancelled.
+  //
+  // The beacon only shortens the session's expiry (demo.leave), it doesn't
+  // wipe: a reload, or closing a second /scout tab, fires the same pagehide
+  // while the demo is still in use. A tab that's still open (or the reloaded
+  // page) pushes the expiry back; otherwise the reaper sweeps it minutes later.
   //
   // The `persisted` check matters: backgrounding a tab on iOS fires pagehide
   // with persisted=true because the page is going into the back/forward cache
-  // and may well come back. Wiping there would delete someone's work just
-  // because they answered a text message. Only a real teardown wipes.
+  // and may well come back. Only a real teardown shortens the expiry.
   useEffect(() => {
     if (!isDemo) return;
     const onPageHide = (e: PageTransitionEvent) => {
@@ -80,7 +84,7 @@ export default function DemoBanner() {
           Demo mode
         </span>
         <span className="text-muted">
-          Everything here is deleted when you close this tab.
+          Everything here is deleted shortly after you close this tab.
         </span>
         <span className="text-[#6b6f78]">
           {status.workspacesUsed} / {status.maxWorkspaces} workspaces
@@ -106,8 +110,9 @@ export default function DemoBanner() {
               You&apos;re in demo mode
             </h2>
             <p className="mt-2.5 text-[14px] leading-relaxed text-muted">
-              If you close the tab, everything is wiped — workspaces, reports, and
-              assignments are all deleted from the server. Nothing here is saved.
+              Shortly after you close the tab, everything is wiped — workspaces,
+              reports, and assignments are all deleted from the server. Nothing here
+              is saved. End demo deletes it right away.
             </p>
             <p className="mt-2 text-[13px] leading-relaxed text-[#6b6f78]">
               You can create up to {status.maxWorkspaces} workspaces. Want to keep your

@@ -151,7 +151,7 @@ function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season:
               >
                 <td className="px-3 py-2.5 font-mono text-[#6b6f78]">{sort === "rank" ? (t.rank ?? i + 1) : i + 1}</td>
                 <td className="px-3 py-2.5">
-                  <Link href={`/teams/${t.teamNumber}?season=${season}`} className="no-underline hover:text-accent">
+                  <Link prefetch={false} href={`/teams/${t.teamNumber}?season=${season}`} className="no-underline hover:text-accent">
                     <span className="font-mono text-[#6b6f78]">{t.teamNumber}</span>{" "}
                     <span className="font-medium text-[#e7eaf0]">{t.name}</span>
                   </Link>
@@ -171,8 +171,11 @@ function RankingsTable({ teams, season, highlight }: { teams: TeamRow[]; season:
 
 function Overview({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.roster, { workspaceId: id });
-  const schedule = useQuery(api.match.schedule, { workspaceId: id });
+  // Member-gated queries throw for a non-member, which would hit the route's
+  // error page instead of "No access" — so wait until get() confirms access.
+  const ok = data ? { workspaceId: id } : "skip";
+  const teams = useQuery(api.teams.roster, ok);
+  const schedule = useQuery(api.match.schedule, ok);
   const rotateJoinCode = useMutation(api.workspaces.rotateJoinCode);
   const isDesktop = useIsDesktop();
 

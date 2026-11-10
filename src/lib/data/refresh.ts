@@ -122,10 +122,11 @@ export async function runRefresh(
     const freshness: Record<string, string> = {};
     try {
       // A full reconcile ignores tokens: a 304 only vouches for /matches.
-      for (const codes of opts.full ? [] : chunk(window, 200)) {
+      for (const codes of opts.full ? [] : chunk(window.map((e) => e.code), 200)) {
         Object.assign(
           freshness,
           await target.client.query(api.sync.state.freshness, {
+            secret: target.secret,
             season,
             paths: codes.map((c) => `matches/${c}`),
           }),

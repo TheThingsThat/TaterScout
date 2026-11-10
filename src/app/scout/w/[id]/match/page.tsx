@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -121,8 +122,10 @@ const arr = (list: string[], v: string) => (list.includes(v) ? list.filter((x) =
 
 function MatchScout({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const schedule = useQuery(api.match.schedule, { workspaceId: id });
-  const mine = useQuery(api.assignments.mySchedule, { workspaceId: id });
+  // Member-gated queries throw for a non-member; wait until get() confirms access.
+  const ok = data ? { workspaceId: id } : "skip";
+  const schedule = useQuery(api.match.schedule, ok);
+  const mine = useQuery(api.assignments.mySchedule, ok);
   const claim = useMutation(api.match.claim);
   const unclaim = useMutation(api.match.unclaim);
   const submit = useMutation(api.match.submitReport);
@@ -148,7 +151,7 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
 
   const state = useQuery(
     api.match.matchState,
-    matchNumber != null ? { workspaceId: id, matchNumber } : "skip",
+    data && matchNumber != null ? { workspaceId: id, matchNumber } : "skip",
   );
   const match = useMemo(
     () => schedule?.find((m) => m.matchNumber === matchNumber),
@@ -230,6 +233,12 @@ function MatchScout({ id }: { id: Id<"workspaces"> }) {
     setFilterInput("");
   }
 
+  if (data === null)
+    return (
+      <div className={`${CARD} text-center text-sm text-muted`}>
+        No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
+      </div>
+    );
   if (schedule === undefined || data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (schedule.length === 0)
     return <div className={`${CARD} text-center text-sm text-muted`}>No schedule imported yet.</div>;

@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -23,16 +24,20 @@ interface EventResult {
 
 function Setup({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.roster, { workspaceId: id });
+  // roster throws for a non-member; wait until get() confirms access.
+  const teams = useQuery(api.teams.roster, data ? { workspaceId: id } : "skip");
   const setEvent = useMutation(api.workspaces.setEvent);
   const setMyTeam = useMutation(api.workspaces.setMyTeam);
   const importSnapshot = useMutation(api.events.importSnapshot);
+  const removeWorkspace = useMutation(api.workspaces.remove);
+  const router = useRouter();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<EventResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [importingCode, setImportingCode] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [teamQuery, setTeamQuery] = useState("");
   const timer = useRef<number | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
@@ -95,6 +100,17 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
   }
 
   async function importCode(code: string, name?: string) {
+    // Switching events wipes the workspace's scouting data (setEvent), so one
+    // mis-tapped search result mustn't be enough.
+    if (
+      name !== undefined &&
+      hasEvent &&
+      code.trim().toUpperCase() !== workspace.eventCode &&
+      !confirm(
+        `Switch to ${name}? This permanently deletes all match reports, pit scouting, assignments, claims and shortlists for ${workspace.eventName || workspace.eventCode}. This can't be undone.`,
+      )
+    )
+      return;
     setImportingCode(code);
     try {
       const res = await fetch(`/api/scout/import?season=${season}&code=${encodeURIComponent(code)}`);
@@ -112,6 +128,23 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
       toast.error(errorMessage(e, "Could not import the event"));
     } finally {
       setImportingCode(null);
+    }
+  }
+
+  async function onDelete() {
+    if (
+      !confirm(
+        `Delete ${workspace.name}? This permanently deletes the workspace and all of its reports, pit scouting, assignments and members. This can't be undone.`,
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      await removeWorkspace({ workspaceId: id });
+      router.replace("/scout");
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not delete the workspace"));
+      setDeleting(false);
     }
   }
 
@@ -245,6 +278,22 @@ function Setup({ id }: { id: Id<"workspaces"> }) {
           )}
         </div>
       )}
+
+      <div className={`${CARD} flex flex-wrap items-center justify-between gap-3`}>
+        <div>
+          <h3 className="text-[15px] font-semibold">Delete workspace</h3>
+          <p className="mt-1 text-[13px] text-muted">
+            Removes this workspace and everything in it for every member.
+          </p>
+        </div>
+        <button
+          onClick={onDelete}
+          disabled={deleting}
+          className="rounded-xl border border-accent/40 px-3.5 py-2 text-[13px] text-accent hover:bg-accent/10 disabled:opacity-60"
+        >
+          {deleting ? "Deleting…" : "Delete workspace"}
+        </button>
+      </div>
     </div>
   );
 }

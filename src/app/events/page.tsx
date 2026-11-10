@@ -39,8 +39,12 @@ function dateRange(e: EventIndexRow): string {
 }
 
 function EventRow({ e, showStatus }: { e: EventIndexRow; showStatus: boolean }) {
+  // No prefetch on team/event links site-wide: every link scrolled into view would
+  // spend the proxy's per-IP budget (a whole venue shares one), and a click still
+  // gets its loading state as soon as the server streams it.
   return (
     <Link
+      prefetch={false}
       href={`/events/${e.season}/${e.code}`}
       className="flex items-center justify-between gap-4 border-t border-[#141414] px-5 py-[13px] no-underline transition-colors first:border-t-0 hover:bg-[#101010]"
     >

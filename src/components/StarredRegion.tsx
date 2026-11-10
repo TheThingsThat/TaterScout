@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
+import { useAuthToken } from "@convex-dev/auth/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { RegionResponse } from "@/app/api/region/route";
@@ -52,6 +53,7 @@ function RegionSelect({ regions, value, onPick }: { regions: string[]; value: st
  *  like starred teams. Signed-in (non-demo) visitors only. */
 export default function StarredRegion({ regions }: { regions: string[] }) {
   const me = useMe();
+  const hasToken = useAuthToken() !== null;
   const setRegion = useSetRegion();
   const now = useNow();
   const [data, setData] = useState<RegionResponse | null>(null);
@@ -66,7 +68,9 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
   useEffect(() => {
     if (!region) return;
     let cancelled = false;
-    fetch(`/api/region?region=${encodeURIComponent(region)}`)
+    // After an event ends the URL is unchanged, so skip the HTTP cache (max-age=60)
+    // or it hands back the same ended row.
+    fetch(`/api/region?region=${encodeURIComponent(region)}`, ended ? { cache: "no-store" } : undefined)
       .then((r) => (r.ok ? (r.json() as Promise<RegionResponse>) : Promise.reject(new Error(String(r.status)))))
       .then((res) => {
         if (cancelled) return;
@@ -79,6 +83,15 @@ export default function StarredRegion({ regions }: { regions: string[] }) {
     };
   }, [region, ended, attempt]);
 
+  // A signed-in visitor still loading: hold the section's space so it doesn't
+  // pop in above starred teams and push the page down.
+  if (me === undefined && hasToken)
+    return (
+      <section className="mx-auto max-w-[1240px] px-5 pt-12 sm:px-8">
+        <h2 className={`mb-4 ${HEADING}`}>Starred region</h2>
+        <div className="h-[72px] animate-pulse rounded-[20px] border border-[#1a1a1a] bg-surface" />
+      </section>
+    );
   if (!me || me.isDemo) return null;
 
   if (!region) {

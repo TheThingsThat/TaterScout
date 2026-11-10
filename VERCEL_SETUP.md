@@ -42,22 +42,42 @@ empty until it returns.
 3. **Seed the deployment** — compute locally, then push:
 
    ```sh
-   npx tsx scripts/build-epa.ts 2025
-   NEXT_PUBLIC_CONVEX_URL="<prod url>" SYNC_SECRET="<prod secret>" \
+   (
+     # A subshell, so the prod URL and secret don't linger in your terminal.
+     # Target prod. The secret is read from Convex, never pasted into a file.
+     export NEXT_PUBLIC_CONVEX_URL="<prod url>"
+     export SYNC_SECRET="$(npx convex env get SYNC_SECRET --prod)"
+
+     # Current season (both scripts default to CURRENT_SEASON); uploads worker state
+     npx tsx scripts/build-epa.ts
+     npx tsx scripts/seed-convex.ts --full
+
+     # 2025: static, dataset committed in src/data
      npx tsx scripts/seed-convex.ts 2025 --full
+
+     # 2019-2024: static, datasets live outside git in data/seasons (build once if absent)
+     for s in 2019 2020 2021 2022 2023 2024; do
+       [ -f data/seasons/rankings-$s.json ] || VIBESCOUT_DATA_DIR=data/seasons npx tsx scripts/build-epa.ts $s
+       VIBESCOUT_DATA_DIR=data/seasons npx tsx scripts/seed-convex.ts $s --full
+     done
+   )
    ```
 
    `--full` writes every row (required the first time; later runs diff).
-   The seed also uploads the worker state file. A season with no file yet starts
-   from empty, so flipping `CURRENT_SEASON` at rollover needs no seed: the worker
-   picks up played events as far back as its 14-day sweep reaches.
+   Past seasons write only their site rows; the current season's seed also
+   uploads the worker state file. The worker never backfills events older than
+   its 14-day sweep, so mid-season the current season must be seeded. Only a
+   rollover at the very start of a season (flipping `CURRENT_SEASON` within its
+   first 14 days) needs no seed: the new season starts from empty and the sweep
+   picks up what's been played.
 
 4. **Redeploy** so the env vars take effect.
 
 ## How data stays fresh
 
 Visitors are the clock: every data-page render and every heartbeat ping
-(`Heartbeat.tsx`, 60s per visible tab) schedules a post-response staleness
+(`Heartbeat.tsx`, 60s per visible tab, served from the CDN cache for a
+minute so about one ping per region reaches the function) schedules a post-response staleness
 check (Next `after()`). When a sync is due, one instance wins the atomic
 Convex claim, probes the active event window with If-Modified-Since (real 304s
 from FIRST), recomputes, and pushes only fingerprint-changed rows. Cadence

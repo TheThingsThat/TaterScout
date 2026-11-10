@@ -2,9 +2,24 @@ import { query, mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { fail, requireMember, requireAdmin } from "./lib";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 const OVERDUE_MS = 5 * 60 * 1000;
+
+/** Release the slot's claim when a match slot leaves its scout. Otherwise the
+ *  old scout's claim outlives the assignment: the new assignee sees the robot
+ *  as taken, and the old one can no longer unclaim it. */
+async function dropClaim(ctx: MutationCtx, a: Doc<"assignments">) {
+  const matchNumber = a.matchNumber;
+  if (a.kind !== "match" || matchNumber == null) return;
+  const c = await ctx.db
+    .query("matchClaims")
+    .withIndex("by_workspace_match_team", (q) =>
+      q.eq("workspaceId", a.workspaceId).eq("matchNumber", matchNumber).eq("teamNumber", a.teamNumber),
+    )
+    .unique();
+  if (c && c.memberId === a.memberId) await ctx.db.delete(c._id);
+}
 
 /** The caller's own assignments (match + pit). Used by the Match/Pit pages for
  *  non-admin scouts. Reads only assignment rows on purpose: joining schedule or
@@ -165,7 +180,11 @@ export const autoAssignMatches = mutation({
       .query("assignments")
       .withIndex("by_workspace_kind", (q) => q.eq("workspaceId", workspaceId).eq("kind", "match"))
       .collect();
-    for (const a of existing) if (teamSet.has(a.teamNumber)) await ctx.db.delete(a._id);
+    for (const a of existing) {
+      if (!teamSet.has(a.teamNumber)) continue;
+      await dropClaim(ctx, a);
+      await ctx.db.delete(a._id);
+    }
 
     const load = new Map<Id<"members">, number>();
     for (const id of members) load.set(id, 0);
@@ -246,6 +265,7 @@ export const reassign = mutation({
     await requireAdmin(ctx, a.workspaceId);
     const target = await ctx.db.get(toMemberId);
     if (!target || target.workspaceId !== a.workspaceId) fail("Member not in workspace.");
+    if (a.memberId !== toMemberId) await dropClaim(ctx, a);
     await ctx.db.patch(assignmentId, { memberId: toMemberId });
   },
 });
@@ -257,6 +277,7 @@ export const unassign = mutation({
     const a = await ctx.db.get(assignmentId);
     if (!a) return;
     await requireAdmin(ctx, a.workspaceId);
+    await dropClaim(ctx, a);
     await ctx.db.delete(assignmentId);
   },
 });

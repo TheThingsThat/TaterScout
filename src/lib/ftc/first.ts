@@ -29,7 +29,7 @@ const isNotFound = (status: number) => status === 404 || status === 400;
 /** Client errors won't succeed on retry — only back off for 429 and 5xx. */
 const isRetryable = (status: number) => status === 429 || status >= 500;
 
-class NotRetryable extends Error {}
+export class NotRetryable extends Error {}
 
 // Retries are for quick failures. A hung upstream gets one attempt and a bit, or a
 // single stuck call would outlast the sync's 60s route (see FETCH_BUDGET_MS).

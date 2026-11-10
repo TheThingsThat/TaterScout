@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import type { Metadata } from "next";
 import { getTeam, getEventMatches, getTeamEventRank, recordOf } from "@/lib/ftc/queries";
 import {
   CURRENT_SEASON,
   allSeasons,
+  pastSeasons,
   seasonFull,
   seasonLabel,
   parseSeasonParam,
   ratingsCoverageNote,
 } from "@/lib/season";
 import { formatAward } from "@/lib/ftc/labels";
-import { locationStr } from "@/lib/format";
+import { fmt, locationStr } from "@/lib/format";
 import { getTeamRanking, getTeamCount, getSeasonCyclePrior } from "@/lib/rankings";
+import { siteTeamRow } from "@/lib/data/convexSite";
 import { getEventStats } from "@/lib/eventStats";
 import { getTrajectory } from "@/lib/trajectory";
 import type { Match, QuickStats, Team, TeamEventLite } from "@/lib/ftc/types";
@@ -107,10 +110,35 @@ const parseSeason = parseSeasonParam;
 /** Seasons we have data for, newest first, from the team's rookie year on. */
 const seasonsSince = (rookieYear: number) => allSeasons().filter((s) => s >= rookieYear);
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+/** FTC team numbers are 1–5 digits; anything else would only cost FIRST calls. */
+const isTeamNumber = (n: number) => Number.isInteger(n) && n >= 1 && n <= 99999;
+
+/** Past seasons we hold a ranking row for this team in. Cached 15 minutes, not-founds
+ *  included, so an unknown or long-retired number doesn't cost a Convex read per past
+ *  season on every request. A Convex outage throws, so it's never cached. */
+const rowSeasons = unstable_cache(
+  async (num: number): Promise<number[]> => {
+    const out: number[] = [];
+    for (const s of pastSeasons()) {
+      const r = await siteTeamRow(s, num);
+      if (r === null) throw new Error("Convex unavailable");
+      if (r.v) out.push(s);
+    }
+    return out;
+  },
+  ["team-row-seasons"],
+  { revalidate: 900 },
+);
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { number } = await params;
+  const season = parseSeason((await searchParams).season);
+  const num = Number(number);
+  if (!isTeamNumber(num)) return { title: `Team ${number}` };
   try {
-    const team = await getTeam(Number(number), CURRENT_SEASON);
+    // The page's own first lookups, so the request memo makes this free.
+    const team =
+      (await getTeam(num, season)) ?? (season === CURRENT_SEASON ? null : await getTeam(num, CURRENT_SEASON));
     if (team) return { title: `${team.number} ${team.name}` };
   } catch {
     /* ignore */
@@ -189,6 +217,7 @@ function SeasonTabs({
       {seasons.map((s) => (
         <Link
           key={s}
+          prefetch={false}
           href={s === CURRENT_SEASON ? `/teams/${team}` : `/teams/${team}?season=${s}`}
           className="rounded-[10px] px-3.5 py-2 text-[13px] transition-colors"
           style={
@@ -209,14 +238,23 @@ export default async function TeamPage({ params, searchParams }: Props) {
   const { number } = await params;
   const season = parseSeason((await searchParams).season);
   const num = Number(number);
-  if (!Number.isInteger(num)) notFound();
+  if (!isTeamNumber(num)) notFound();
 
   scheduleAutoRefresh(season); // post-response staleness check (never blocks)
 
   const team = await getTeam(num, season);
   if (!team) {
-    // Not registered that season: still show the team, with a way to its other seasons.
-    const current = season === CURRENT_SEASON ? null : await getTeam(num, CURRENT_SEASON);
+    // Not registered that season: show the team from its newest season we know, with
+    // tabs to the rest. A past season costs FIRST calls only once our cached ranking
+    // row shows the team played it.
+    const known = await rowSeasons(num).catch(() => [] as number[]);
+    let current: Team | null = null;
+    for (const s of allSeasons()) {
+      if (s === season) continue;
+      if (s !== CURRENT_SEASON && !known.includes(s)) continue;
+      current = await getTeam(num, s);
+      if (current) break;
+    }
     if (!current) notFound();
     return (
       <div className="mx-auto max-w-[1100px] space-y-6 px-5 pb-6 pt-10 sm:px-8">
@@ -231,10 +269,31 @@ export default async function TeamPage({ params, searchParams }: Props) {
 
   const seasons = seasonsSince(team.rookieYear);
 
-  const [epa, epaTeamCount, traj] = await Promise.all([
-    getTeamRanking(season, num),
-    getTeamCount(season),
-    getTrajectory(season, num),
+  // The Convex reads and the per-event FIRST fetches don't depend on each other: run
+  // them together. Events are chronological, most recent first: everything FIRST
+  // knows about the team at each, fetched through the event pages' caches.
+  const [[epa, epaTeamCount, traj], events] = await Promise.all([
+    Promise.all([getTeamRanking(season, num), getTeamCount(season), getTrajectory(season, num)]),
+    Promise.all(
+      [...team.events]
+        .sort((a, b) => b.event.start.localeCompare(a.event.start))
+        .map(async ({ event }) => {
+          const matches = await getEventMatches(season, event.code, event.timezone, event.end).catch(
+            () => [] as Match[],
+          );
+          const mine = matches.filter((m) => m.teams.some((t) => t.teamNumber === num));
+          // Until the team has played here, FIRST's rank is just its default ordering (or,
+          // at a League Meet, standing from earlier meets) and no stats row exists.
+          const played = mine.some((m) => m.hasBeenPlayed);
+          const [rank, stats] = played
+            ? await Promise.all([
+                getTeamEventRank(season, event.code, num, event.timezone, event.end).catch(() => null),
+                getEventStats(season, event.code, event.end),
+              ])
+            : [null, null];
+          return { event, matches, mine, rank, stat: stats?.get(num) ?? null, record: recordOf(mine, num) };
+        }),
+    ),
   ]);
 
   // Season OPR tiles come from our own store (FIRST has no season OPR). Endgame
@@ -250,29 +309,6 @@ export default async function TeamPage({ params, searchParams }: Props) {
           dc: { value: epa.oprTele ?? 0, rank: epa.rkOprTele ?? 0 },
         }
       : null;
-
-  // Chronological, most recent first. Everything FIRST knows about the team at each
-  // event; these fetches are shared with the event pages' caches.
-  const events = await Promise.all(
-    [...team.events]
-      .sort((a, b) => b.event.start.localeCompare(a.event.start))
-      .map(async ({ event }) => {
-        const matches = await getEventMatches(season, event.code, event.timezone, event.end).catch(
-          () => [] as Match[],
-        );
-        const mine = matches.filter((m) => m.teams.some((t) => t.teamNumber === num));
-        // Until the team has played here, FIRST's rank is just its default ordering (or,
-        // at a League Meet, standing from earlier meets) and no stats row exists.
-        const played = mine.some((m) => m.hasBeenPlayed);
-        const [rank, stats] = played
-          ? await Promise.all([
-              getTeamEventRank(season, event.code, num, event.timezone, event.end).catch(() => null),
-              getEventStats(season, event.code, event.end),
-            ])
-          : [null, null];
-        return { event, matches, mine, rank, stat: stats?.get(num) ?? null, record: recordOf(mine, num) };
-      }),
-  );
 
   // Live: predicted next match at any ongoing event this team is registered for.
   const ongoing = events.filter((e) => e.event.ongoing);
@@ -309,6 +345,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
             </span>
           </div>
           <Link
+            prefetch={false}
             href={`/events/${season}/${nextMatch.eventCode}`}
             className="text-[13px] text-muted no-underline hover:text-foreground"
           >
@@ -340,6 +377,34 @@ export default async function TeamPage({ params, searchParams }: Props) {
             <span className="text-[11px] text-[#6b6f78]">Expected Points Added</span>
           </div>
           <EpaTiles team={epa} teamCount={epaTeamCount} />
+        </section>
+      )}
+
+      {/* Hive tips (count EPA, BIOBUZZ) */}
+      {epa && (epa.tipsAuto != null || epa.tipsTele != null) && (
+        <section>
+          <div className="mb-3.5 flex items-baseline gap-2.5">
+            <h2 className={HEADING}>Hive tips</h2>
+            <span className="text-[11px] text-[#6b6f78]">
+              expected per match, this robot alone
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+            {[
+              ["Auto tips", epa.tipsAuto],
+              ["TeleOp tips", epa.tipsTele],
+            ].map(([label, v]) => (
+              <div key={label} className="rounded-2xl border border-[#1a1a1a] bg-surface p-[18px]">
+                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted">{label}</span>
+                <div className="mt-2.5 text-[26px] font-bold tabular-nums" style={{ color: "var(--epa)" }}>
+                  {fmt(v as number | null, 2)}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-[#6b6f78]">
+            FIRST counts tips per alliance, so each robot&apos;s share is estimated the way EPA splits points.
+          </p>
         </section>
       )}
 
@@ -410,6 +475,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
               >
                 <div className="text-[14px] font-medium">{formatAward(a.type, a.placement)}</div>
                 <Link
+                  prefetch={false}
                   href={`/events/${season}/${a.eventCode}`}
                   className="mt-0.5 block max-w-[220px] truncate text-[12px] text-[#b89a52] no-underline hover:text-gold"
                   title={a.event?.name ?? a.eventCode}

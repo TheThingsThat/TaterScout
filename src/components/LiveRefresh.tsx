@@ -11,10 +11,24 @@ export default function LiveRefresh({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => {
-      if (!document.hidden) router.refresh();
-    }, 30_000);
-    return () => clearInterval(id);
+    // Counted, not a flag, so one LiveRefresh unmounting can't clear another's.
+    // Heartbeat reads it: these refreshes already schedule the sync.
+    const root = document.documentElement;
+    root.dataset.live = String(Number(root.dataset.live ?? 0) + 1);
+    // ~1/min with jitter, so a venue's tabs (one NAT IP, one rate-limit bucket)
+    // don't refresh in lockstep. Syncs land minutes apart anyway.
+    let t: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      t = setTimeout(() => {
+        if (!document.hidden) router.refresh();
+        tick();
+      }, 60_000 + Math.random() * 15_000);
+    };
+    tick();
+    return () => {
+      clearTimeout(t);
+      root.dataset.live = String(Number(root.dataset.live ?? 1) - 1);
+    };
   }, [enabled, router]);
   return null;
 }

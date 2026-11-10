@@ -3,9 +3,10 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// The backstop for demo cleanup. The tab-close beacon handles the normal case,
-// but crashes and force-quits fire no event — this is what guarantees demo data
-// can't accumulate. Runs often because each pass is capped at 20 sessions.
+// Demo cleanup. The tab-close beacon only shortens a session's expiry (and
+// crashes and force-quits fire no event at all), so this is what actually
+// deletes demo data and guarantees it can't accumulate. Each pass is row-budgeted and reschedules itself until the
+// backlog is clear, so this only needs to notice newly expired sessions.
 crons.interval("reap expired demo sessions", { minutes: 10 }, internal.demo.reapExpired, {});
 
 export default crons;

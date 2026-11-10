@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import {
   DndContext,
@@ -364,9 +365,17 @@ function ShortlistView({ id, teams }: { id: Id<"workspaces">; teams: TeamRow[] }
 
 // ---- Page -------------------------------------------------------------------
 function Picklist({ id }: { id: Id<"workspaces"> }) {
-  const teamsData = useQuery(api.picklist.teams, { workspaceId: id });
+  const data = useQuery(api.workspaces.get, { workspaceId: id });
+  // picklist.teams throws for a non-member; wait until get() confirms access.
+  const teamsData = useQuery(api.picklist.teams, data ? { workspaceId: id } : "skip");
   const [tab, setTab] = useState<"rank" | "shortlist">("rank");
 
+  if (data === null)
+    return (
+      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+        No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
+      </div>
+    );
   if (teamsData === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teamsData.length === 0)
     return (

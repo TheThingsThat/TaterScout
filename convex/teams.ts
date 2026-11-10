@@ -52,6 +52,31 @@ export const list = query({
   },
 });
 
+/** Team list + pit status for the Pit page. Like `list` minus the report
+ *  counts, so pit devices don't re-run on every match report saved. */
+export const pitStatus = query({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    await requireMember(ctx, workspaceId);
+    const teams = await ctx.db
+      .query("teamEvents")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    const pits = await ctx.db
+      .query("pitReports")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    const pitByTeam = new Map(pits.map((p) => [p.teamNumber, p]));
+    return teams
+      .map((t) => ({
+        ...t,
+        pitScouted: pitByTeam.has(t.teamNumber),
+        robotStatus: pitByTeam.get(t.teamNumber)?.robotStatus ?? null,
+      }))
+      .sort(byRank);
+  },
+});
+
 /** One team: imported stats, all match reports, and simple averages. */
 export const detail = query({
   args: { workspaceId: v.id("workspaces"), teamNumber: v.number() },

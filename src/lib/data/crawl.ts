@@ -2,7 +2,7 @@
 // One event = matches (all levels, one call) joined with the per-level score
 // breakdowns (auto/teleop/RP). Team names + regions come from FIRST's teams
 // endpoint. OPR is NOT provided by FIRST — we compute it in compute.ts.
-import { firstGet, firstGetConditional } from "../ftc/first";
+import { firstGet, firstGetConditional, NotRetryable } from "../ftc/first";
 import { levelOf, normalizeEventType } from "../ftc/labels";
 import { isScored, teamsOnField, venueTimeMs } from "../ftc/match";
 import type { RawEvent, RawMatch } from "./types";
@@ -10,7 +10,7 @@ import type { RawEvent, RawMatch } from "./types";
 const CONCURRENCY = 6;
 
 // --- FIRST response shapes (only the fields we use) ---
-interface FirstEvent {
+export interface FirstEvent {
   code: string;
   name: string | null;
   typeName: string | null;
@@ -62,7 +62,15 @@ interface FirstAllianceScore {
   swarmRP?: boolean; // BIOBUZZ 2026
   pollinator1RP?: boolean;
   pollinator2RP?: boolean;
+  autoHiveTips?: number; // BIOBUZZ counts, see COUNT_FIELDS
+  teleopHiveTips?: number;
 }
+
+/** Per-alliance game-piece counts rated as count EPA, by season (positional,
+ *  matching RawMatch.rc/bc and TeamRow's tips fields). */
+const COUNT_FIELDS: Record<number, readonly ("autoHiveTips" | "teleopHiveTips")[]> = {
+  2026: ["autoHiveTips", "teleopHiveTips"],
+};
 interface FirstMatchScore {
   matchLevel: string;
   matchSeries: number;
@@ -80,12 +88,18 @@ const evOpts = { revalidate: undefined as number | undefined }; // crawl = no-st
 
 const getEventsList = (season: number) =>
   firstGet<{ events: FirstEvent[] }>(`${season}/events`, evOpts);
-const getEventDetail = (season: number, code: string) =>
-  firstGet<{ events: FirstEvent[] }>(`${season}/events?eventCode=${code}`, evOpts);
 const getMatches = (season: number, code: string) =>
   firstGet<{ matches: FirstMatch[] }>(`${season}/matches/${code}`, evOpts);
+// Some events answer 403/500 on /scores while their schedule is fine (see
+// queries.ts), so a failed breakdown is null: the event is still rated from its
+// /matches totals, with its RP flags left unknown.
 const getScores = (season: number, code: string, level: "qual" | "playoff") =>
-  firstGet<{ matchScores: FirstMatchScore[] }>(`${season}/scores/${code}/${level}`, evOpts);
+  firstGet<{ matchScores: FirstMatchScore[] }>(`${season}/scores/${code}/${level}`, evOpts).catch((e) => {
+    // A permanent refusal (403 and the like): rate from the /matches totals alone.
+    if (e instanceof NotRetryable) return null;
+    // 429/5xx/timeout: fail the event so no token is saved and the next sync retries it.
+    throw e;
+  });
 
 /** All teams (paginated) → name + homeRegion. */
 async function fetchAllTeams(season: number): Promise<Map<number, { name: string; region: string | null }>> {
@@ -149,6 +163,15 @@ function selfPenaltyNoPen(a: FirstAllianceScore | undefined, final: number | nul
   }
   if ((final ?? 0) > 0) return (final ?? 0) + (ownFoul ?? 0);
   return (ownFoul ?? 0) > 0 ? null : 0;
+}
+
+/** One alliance's counts, or empty when unknown: no score row, a zeroed one
+ *  (FIRST's placeholder before a game's score model ships), or a missing field. */
+function countsOf(season: number, a: FirstAllianceScore | undefined, allianceFinal: number | null): number[] {
+  const fields = COUNT_FIELDS[season];
+  if (!fields || !a || (a.totalPoints === 0 && (allianceFinal ?? 0) > 0)) return [];
+  const out = fields.map((f) => a[f]);
+  return out.every((x): x is number => typeof x === "number" && x >= 0) ? out : [];
 }
 
 const isPlayed = (m: FirstMatch): boolean =>
@@ -230,6 +253,9 @@ function buildRawEvent(
       bt,
       rrp: rpFlags(sc?.red, m.scoreRedFinal),
       brp: rpFlags(sc?.blue, m.scoreBlueFinal),
+      ...(COUNT_FIELDS[season]
+        ? { rc: countsOf(season, sc?.red, m.scoreRedFinal), bc: countsOf(season, sc?.blue, m.scoreBlueFinal) }
+        : {}),
     });
   }
 
@@ -303,12 +329,13 @@ export async function fetchAllEvents(
 /** Events overlapping now ± window. `(0, 0)` = currently-ongoing events only
  *  (mirrors ftc-scout's Partial scope: start ≤ now ≤ end, counting the full end
  *  day). Larger windows also catch recently-finished / soon-starting events.
- *  Null when FIRST returned no list at all, which is not the same as no events. */
+ *  Null when FIRST returned no list at all, which is not the same as no events.
+ *  The rows double as each event's detail for the build (no per-event refetch). */
 export async function fetchActiveWindow(
   season: number,
   lookbackDays = 14,
   lookaheadDays = 3,
-): Promise<string[] | null> {
+): Promise<FirstEvent[] | null> {
   const evR = await getEventsList(season);
   if (!evR) return null;
   const now = Date.now();
@@ -320,8 +347,7 @@ export async function fetchActiveWindow(
       const end = venueTimeMs(e.dateEnd ?? e.dateStart, e.timezone);
       // Count the whole final day: FIRST dates are midnight, so add ~1 day.
       return s !== null && end !== null && end + 86400000 >= lo && s <= hi;
-    })
-    .map((e) => e.code);
+    });
 }
 
 const natKey = (m: RawMatch) => `${m.level}|${m.series}|${m.num}`;
@@ -343,7 +369,7 @@ export interface FreshnessToken {
 }
 
 export interface ProbeResult {
-  updates: { code: string; matches: FirstMatch[]; lastModified: string | null }[]; // events to re-ingest
+  updates: { code: string; detail: FirstEvent; matches: FirstMatch[]; lastModified: string | null }[]; // events to re-ingest
   skipped304: number; // events skipped via If-Modified-Since
   failed: number; // events FIRST wouldn't serve this run (retried next sync)
   tokens: FreshnessToken[]; // Last-Modified values for events with nothing to ingest
@@ -354,12 +380,13 @@ export interface ProbeResult {
  *  caller only loads worker state when `updates` is non-empty. */
 export async function probeEvents(
   season: number,
-  window: string[],
+  window: FirstEvent[],
   freshness: Record<string, string>,
   deadline: number,
 ): Promise<ProbeResult> {
   const out: ProbeResult = { updates: [], skipped304: 0, failed: 0, tokens: [] };
-  await pool(window, deadline, async (code) => {
+  await pool(window, deadline, async (detail) => {
+    const code = detail.code;
     try {
       const probe = await firstGetConditional<{ matches: FirstMatch[] }>(
         `${season}/matches/${code}`,
@@ -372,7 +399,7 @@ export async function probeEvents(
       if (!probe.data) return; // 404 — no matches posted yet
       const matches = probe.data.matches ?? [];
       if (matches.some(isPlayed)) {
-        out.updates.push({ code, matches, lastModified: probe.lastModified });
+        out.updates.push({ code, detail, matches, lastModified: probe.lastModified });
       } else if (probe.lastModified) {
         // Schedule only: nothing to ingest until FIRST modifies it again.
         out.tokens.push({ path: `matches/${code}`, lastModified: probe.lastModified });
@@ -395,8 +422,9 @@ export interface DeltaResult {
 }
 
 /** Re-ingest the probed events and merge; report only real changes. The probe's
- *  matches body is REUSED for the build (no double fetch), and the existing
- *  modifiedOn/match-count comparison stays as the change backstop. A token is
+ *  matches body and the events-list row are REUSED for the build (no double
+ *  fetch), a level's scores are fetched only once it has a played match, and the
+ *  existing modifiedOn/match-count comparison stays as the change backstop. A token is
  *  only returned once its event built, so a failed fetch gets retried. `force`
  *  takes every probed event as changed, picking up what that comparison can't see
  *  (RP flags and event details live outside /matches). */
@@ -408,16 +436,14 @@ export async function fetchDeltas(
   force = false,
 ): Promise<DeltaResult> {
   const built: { code: string; fresh: RawEvent; lastModified: string | null }[] = [];
-  await pool(probes.updates, deadline, async ({ code, matches, lastModified }) => {
+  await pool(probes.updates, deadline, async ({ code, detail, matches, lastModified }) => {
     try {
-      const [detailR, qs, ps, teamInfo] = await Promise.all([
-        getEventDetail(season, code),
-        getScores(season, code, "qual"),
-        getScores(season, code, "playoff"),
+      const played = matches.filter(isPlayed);
+      const [qs, ps, teamInfo] = await Promise.all([
+        played.some((m) => m.tournamentLevel === "QUALIFICATION") ? getScores(season, code, "qual") : null,
+        played.some((m) => m.tournamentLevel !== "QUALIFICATION") ? getScores(season, code, "playoff") : null,
         fetchEventTeams(season, code),
       ]);
-      const detail = detailR?.events?.[0];
-      if (!detail) return;
       const scores = [...(qs?.matchScores ?? []), ...(ps?.matchScores ?? [])];
       built.push({ code, fresh: buildRawEvent(season, detail, matches, scores, teamInfo), lastModified });
     } catch {

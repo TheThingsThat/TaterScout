@@ -3,19 +3,11 @@
 :root {
   --background: #000000;
   --surface: #0a0a0a;
-  --surface-2: #161616;
-  --surface-input: #0c0c0c;
   --border: #1a1a1a;
-  --border-2: #232323;
-  --divider: #141414;
   --foreground: #f4f5f7;
-  --heading: #f7f8fa;
   --muted: #9aa0aa;
-  --muted-2: #6b6f78;
-  --faint: #52565e;
 
   --accent: #cd0e0e; /* brand red */
-  --accent-2: #2f8bff; /* = EPA blue (legacy alias used by some components) */
   --epa: #2f8bff;
   --opr: #3ecf76;
   --gold: #ffc24b;
@@ -27,12 +19,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
   --color-border: var(--border);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
   --color-epa: var(--epa);
   --color-opr: var(--opr);
   --color-gold: var(--gold);
@@ -98,4 +88,14 @@ body {
 
 select {
   appearance: none;
+}
+
+/* iOS Safari zooms into any focused field under 16px and stays zoomed. Unlayered,
+   so it beats Tailwind's layered text-[13px]/[14px]/[15px] utilities. */
+@media (pointer: coarse), (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

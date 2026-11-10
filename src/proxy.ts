@@ -5,6 +5,7 @@ import {
   nextjsMiddlewareRedirect,
 } from "@convex-dev/auth/nextjs/server";
 import { safeNext } from "@/lib/safeNext";
+import { isKnownSeason, isValidEventCode } from "@/lib/season";
 
 // Sign-in is site-wide (stars on public pages), but only /scout requires it.
 const isSignIn = createRouteMatcher(["/sign-in"]);
@@ -27,8 +28,9 @@ const isScout = createRouteMatcher(["/scout", "/scout/(.*)"]);
  * whole FTC venue browsing over one NAT'd gym wifi looks like a single client.
  * A limit tuned to "one person" would fire during exactly the events this site
  * exists for. Scripted abuse runs orders of magnitude above this, and the real
- * amplification is already gone (invalid codes cost ~0 upstream calls now), so
- * this is defense-in-depth rather than the primary control.
+ * amplification is already gone (an invalid season or event code costs 0 upstream
+ * calls, an unknown team number one or two per 15 minutes), so this is
+ * defense-in-depth rather than the primary control.
  */
 const WINDOW_MS = 60_000;
 const LIMIT = 300; // requests per IP per minute across the metered routes
@@ -98,10 +100,50 @@ function rateLimited(request: NextRequest): NextResponse | null {
   return charge(hits, ip, 1, LIMIT, now);
 }
 
+/**
+ * Team and event pages stream behind a loading screen, so by the time the page
+ * itself decides "not found" the 200 status is already sent. URLs that can't be
+ * valid are answered here instead, with a real 404 (or a redirect to the
+ * canonical upper-case event code), before any page work or FIRST call.
+ */
+function canonicalize(request: NextRequest): NextResponse | null {
+  const { pathname } = request.nextUrl;
+  const team = /^\/teams\/([^/]+)\/?$/.exec(pathname);
+  if (team) {
+    const n = Number(team[1]);
+    return /^\d+$/.test(team[1]) && n >= 1 && n <= 99999 ? null : notFound(request);
+  }
+  const event = /^\/events\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
+  if (event) {
+    const season = Number(event[1]);
+    let code: string;
+    try {
+      code = decodeURIComponent(event[2]);
+    } catch {
+      return notFound(request); // malformed %-escape
+    }
+    if (!/^\d+$/.test(event[1]) || !isKnownSeason(season) || !isValidEventCode(code.toUpperCase())) {
+      return notFound(request);
+    }
+    if (code !== code.toUpperCase()) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/events/${season}/${code.toUpperCase()}`;
+      return NextResponse.redirect(url, 308);
+    }
+  }
+  return null;
+}
+
+/** Render the site's not-found page with a 404 status (no such route exists). */
+const notFound = (request: NextRequest) =>
+  NextResponse.rewrite(new URL("/_not-found-route", request.url), { status: 404 });
+
 export default convexAuthNextjsMiddleware(
   async (request, { convexAuth }) => {
     const limited = rateLimited(request);
     if (limited) return limited;
+    const canonical = canonicalize(request);
+    if (canonical) return canonical;
 
     if (isSignIn(request)) {
       // Already signed in (including straight back from Google): go where they were headed.

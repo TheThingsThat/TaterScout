@@ -12,6 +12,8 @@ export interface TeamSummary {
   rkEpa: number | null;
   oprNp: number | null;
   rkOprNp: number | null;
+  tipsAuto: number | null; // expected hive tips per match (BIOBUZZ)
+  tipsTele: number | null;
   next: {
     code: string;
     name: string;
@@ -64,6 +66,8 @@ export async function summarizeTeams(
       rkEpa: rk?.rkEpa ?? null,
       oprNp: rk?.oprNp ?? null,
       rkOprNp: rk?.rkOprNp ?? null,
+      tipsAuto: rk?.tipsAuto ?? null,
+      tipsTele: rk?.tipsTele ?? null,
       next: e
         ? {
             code: e.code,

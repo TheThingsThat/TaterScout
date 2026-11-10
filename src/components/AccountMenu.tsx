@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { signInHref, useEndDemo, useMe } from "./useMe";
 
 const ITEM =
@@ -13,8 +13,6 @@ const PILL_W = "w-[72px]";
 /** Top-right of the site header: "Sign in", or the signed-in visitor's menu. */
 export default function AccountMenu() {
   const me = useMe();
-  // Known from the server render, so the loading placeholder matches what follows.
-  const hasToken = useAuthToken() !== null;
   const path = usePathname();
   const router = useRouter();
   const { signOut } = useAuthActions();
@@ -45,14 +43,9 @@ export default function AccountMenu() {
     };
   }, [open]);
 
-  // Same footprint while loading as what comes next, so the header doesn't shift.
-  if (me === undefined) {
-    return hasToken ? (
-      <div aria-hidden className="h-8 w-8 shrink-0 rounded-full bg-[#111]" />
-    ) : (
-      <div aria-hidden className={`h-8 ${PILL_W} shrink-0`} />
-    );
-  }
+  // Only a visitor with a token loads (useMe), so this is the avatar's footprint
+  // and the header doesn't shift.
+  if (me === undefined) return <div aria-hidden className="h-8 w-8 shrink-0 rounded-full bg-[#111]" />;
 
   if (me === null) {
     if (path === "/sign-in") return <div aria-hidden className={`h-8 ${PILL_W} shrink-0`} />;

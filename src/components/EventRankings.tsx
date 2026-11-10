@@ -110,6 +110,7 @@ export default function EventRankings({
                   </td>
                   <td className="px-3.5 py-2.5">
                     <Link
+                      prefetch={false}
                       href={`/teams/${t.teamNumber}?season=${season}`}
                       className="no-underline hover:text-accent"
                     >

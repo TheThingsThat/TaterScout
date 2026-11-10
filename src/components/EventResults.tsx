@@ -34,6 +34,7 @@ function Row({
           return (
             <Link
               key={t.number}
+              prefetch={false}
               href={`/teams/${t.number}?season=${season}`}
               className="no-underline hover:text-foreground"
               style={{ color: captain ? accent : "#9aa0aa", fontWeight: captain ? 600 : 400 }}

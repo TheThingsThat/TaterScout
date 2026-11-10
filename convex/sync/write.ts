@@ -26,6 +26,9 @@ const teamRow = v.object({
   rkOprNp: nn,
   rkOprAuto: nn,
   rkOprTele: nn,
+  // Count EPA (hive tips per robot); optional so older rows and syncs still validate.
+  tipsAuto: v.optional(nn),
+  tipsTele: v.optional(nn),
 });
 
 const trajectoryRow = v.object({
@@ -34,10 +37,7 @@ const trajectoryRow = v.object({
   events: v.array(
     v.object({ c: v.string(), n: v.union(v.string(), v.null()), s: v.union(v.string(), v.null()) }),
   ),
-  // Both forms accepted so a sync from the previous Vercel build still lands
-  // during a deploy; current code only sends pointsJson.
   pointsJson: v.optional(v.string()),
-  points: v.optional(v.array(v.array(nn))),
 });
 
 const eventStatsRow = v.object({
@@ -83,6 +83,19 @@ export const upsertTeams = mutation({
         void rkEpa; void rkEpaAuto; void rkEpaTele; void rkOprNp; void rkOprAuto; void rkOprTele;
         await ctx.db.patch(doc._id, stats);
       } else if (doc) await ctx.db.replace(doc._id, { season, ...row });
+      else if (keepRanks)
+        // A new row's fresh rank would collide with the stale ones just as badly,
+        // so it stays unranked until the next reconcile writes every rank.
+        await ctx.db.insert("seasonTeams", {
+          season,
+          ...row,
+          rkEpa: null,
+          rkEpaAuto: null,
+          rkEpaTele: null,
+          rkOprNp: null,
+          rkOprAuto: null,
+          rkOprTele: null,
+        });
       else await ctx.db.insert("seasonTeams", { season, ...row });
     }
     return rows.length;

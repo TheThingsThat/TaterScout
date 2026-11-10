@@ -22,7 +22,6 @@ const spaceMono = Space_Mono({
 const newsreader = Newsreader({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  style: ["normal", "italic"],
   variable: "--font-newsreader",
 });
 
@@ -70,7 +69,8 @@ export default function RootLayout({
             data stays cached. The middleware exchanges OAuth codes, only on /sign-in. */}
         <ConvexAuthNextjsServerProvider shouldHandleCode={false}>
           <ConvexClientProvider>
-            <Heartbeat />
+            {/* The sync it triggers only runs in production; elsewhere it'd be idle pings. */}
+            {process.env.VERCEL_ENV === "production" && <Heartbeat />}
             <Header />
             <main className="flex-1">{children}</main>
             <Footer />

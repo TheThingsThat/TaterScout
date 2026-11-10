@@ -159,3 +159,19 @@ export const submitReport = mutation({
     return id;
   },
 });
+
+/** Delete a match report (its author or an admin), e.g. a fat-fingered tally.
+ *  That also clears the duplicate check in claim/submitReport, so the robot can
+ *  be re-scouted through the normal form. */
+export const deleteReport = mutation({
+  args: { reportId: v.id("matchReports") },
+  handler: async (ctx, { reportId }) => {
+    const report = await ctx.db.get(reportId);
+    if (!report) return;
+    const member = await requireMember(ctx, report.workspaceId);
+    if (report.memberId !== member._id && member.role !== "admin") {
+      fail("Only the report's author or an admin can delete it.");
+    }
+    await ctx.db.delete(reportId);
+  },
+});

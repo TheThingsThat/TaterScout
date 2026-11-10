@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { formatDate } from "@/lib/format";
 import type { TrajPoint, EventSegment } from "@/lib/trajectory";
 
@@ -30,7 +30,7 @@ const PAD = { l: 40, r: 14, t: 14, b: 64 };
 const PLOT_W = W - PAD.l - PAD.r;
 const PLOT_H = H - PAD.t - PAD.b;
 
-const fmtDate = (ms: number) => formatDate(ms, { year: false });
+const subscribe = () => () => {};
 
 /** Real competition match label (e.g. "Qual 15", "Match 1-2"). Falls back to
  *  the season sequence index for points without match metadata. */
@@ -51,6 +51,10 @@ export default function TrajectoryChart({
   const [visible, setVisible] = useState<Set<Key>>(new Set(["epa", "opr"]));
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  // Match dates in the viewer's zone (a US evening match is already the next day
+  // in UTC); SSR and hydration use UTC so they match, then the client swaps.
+  const isClient = useSyncExternalStore(subscribe, () => true, () => false);
+  const fmtDate = (ms: number) => formatDate(ms, { year: false, local: isClient });
 
   const n = points.length;
   const step = n > 1 ? PLOT_W / (n - 1) : 0;
@@ -102,7 +106,7 @@ export default function TrajectoryChart({
     return d;
   }
 
-  function onMove(e: React.MouseEvent) {
+  function onMove(e: React.PointerEvent) {
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
@@ -161,9 +165,14 @@ export default function TrajectoryChart({
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         className="block w-full select-none"
-        style={{ touchAction: "none" }}
-        onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        // pan-y: vertical swipes still scroll the page, horizontal drags scrub.
+        // A touch keeps its last readout after the finger lifts.
+        style={{ touchAction: "pan-y" }}
+        onPointerDown={onMove}
+        onPointerMove={onMove}
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") setHover(null);
+        }}
       >
         {segments.map((seg, idx) => {
           const left = Math.max(PAD.l, xAt(seg.start) - halfStep);
@@ -260,7 +269,8 @@ export default function TrajectoryChart({
         )}
       </svg>
 
-      <div className="mt-2 min-h-[22px] text-[12px]">
+      {/* Tall enough for the no-show subline, so the page below doesn't jump on hover. */}
+      <div className="mt-2 min-h-[36px] text-[12px]">
         {hp ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex flex-col leading-tight">

@@ -50,6 +50,7 @@ function AllianceCell({
       {teams.map((t) => (
         <Link
           key={t.teamNumber}
+          prefetch={false}
           href={`/teams/${t.teamNumber}?season=${season}`}
           className={`font-mono text-[13px] hover:underline ${t.teamNumber === focusTeam ? "underline underline-offset-2" : ""}`}
           style={{

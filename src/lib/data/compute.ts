@@ -2,7 +2,7 @@
 // Lifted from scripts/build-epa.ts main() so the offline CLI and the runtime
 // refresh route share one implementation. No network, no disk — caller supplies
 // the events and handles fetch/persist.
-import { computeEpa, type EpaMatch, type EpaTrajPoint } from "../epa/engine";
+import { computeCountEpa, computeEpa, type CountMatch, type EpaMatch, type EpaTrajPoint } from "../epa/engine";
 import { solveEventOpr, type AllianceObs, type Triple } from "../epa/opr";
 import { computeSeasonCyclePriors } from "../predict/matchTimes";
 import { computeSimModel, type SimMatch } from "../predict/model";
@@ -51,6 +51,27 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
     }
   const epaTraj = new Map<number, EpaTrajPoint[]>();
   const { teams: epa, config: epaCfg } = computeEpa(epaMatches, {}, epaTraj);
+
+  // --- Count EPA: hive tips per robot (seasons whose crawl keeps counts) ---
+  // Rated only once EVERY match was crawled with counts: matches stored before
+  // counts were kept have none (rc undefined; a newer crawl's unknown is []), and
+  // rating just the re-crawled events would pass a partial season off as a full one.
+  const countsComplete = events.every((e) => e.matches.every((m) => m.rc !== undefined && m.bc !== undefined));
+  const countMatches: CountMatch[] = [];
+  if (countsComplete)
+    for (const e of events)
+      for (const m of e.matches)
+        if (m.rc && m.bc)
+          countMatches.push({
+            time: m.time, redTeams: m.red, blueTeams: m.blue, red: m.rc, blue: m.bc,
+            playoff: m.level !== "Quals", rated: isFullMatch(m),
+          });
+  const tips = computeCountEpa(countMatches, 2);
+  // A rating can dip below zero for a team that never scores one; show it as none.
+  const tipOf = (t: number, c: number): number | null => {
+    const e = tips.get(t);
+    return e ? round(Math.max(0, e.v[c])) : null;
+  };
 
   // --- OPR (computed locally — FIRST provides none). Per-event final solve over
   //     QUALIFICATION matches only, uneven matches excluded exactly as EPA does
@@ -161,6 +182,7 @@ export function computeSeasonData(season: number, events: RawEvent[]): ComputedD
       rkEpa: rankMaps.epa.get(r) ?? null,
       rkEpaAuto: rankMaps.epaAuto.get(r) ?? null,
       rkEpaTele: rankMaps.epaTele.get(r) ?? null,
+      ...(tips.size ? { tipsAuto: tipOf(r.number, 0), tipsTele: tipOf(r.number, 1) } : {}),
     };
   }
 

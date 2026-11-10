@@ -183,6 +183,7 @@ export default async function RankingsPage({ searchParams }: Props) {
                   </td>
                   <td className="px-4 py-[11px]">
                     <Link
+                      prefetch={false}
                       href={`/teams/${r.number}?season=${season}`}
                       className="no-underline hover:text-accent"
                     >

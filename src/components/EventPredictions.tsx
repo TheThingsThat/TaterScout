@@ -43,7 +43,7 @@ export default function EventPredictions({
               >
                 <td className="px-3.5 py-2.5 font-mono text-[#6b6f78]">{i + 1}</td>
                 <td className="px-3.5 py-2.5">
-                  <Link href={`/teams/${t.number}?season=${season}`} className="no-underline hover:text-accent">
+                  <Link prefetch={false} href={`/teams/${t.number}?season=${season}`} className="no-underline hover:text-accent">
                     <span className="font-mono text-[#6b6f78]">{t.number}</span>
                   </Link>
                 </td>

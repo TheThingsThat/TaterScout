@@ -54,11 +54,13 @@ export default function StarredTeams() {
     return !d || hasEnded(d, now);
   });
   const missingKey = missing.join(",");
+  // Refetching an ended row: the URL may match the last one, so skip the HTTP cache.
+  const refetch = missing.some((t) => data.has(t));
 
   useEffect(() => {
     if (!missingKey) return;
     let cancelled = false;
-    fetch(`/api/starred?teams=${missingKey}`)
+    fetch(`/api/starred?teams=${missingKey}`, refetch ? { cache: "no-store" } : undefined)
       .then((r) => (r.ok ? (r.json() as Promise<TeamSummaryResponse>) : Promise.reject(new Error(String(r.status)))))
       .then((res) => {
         if (cancelled) return;
@@ -75,7 +77,7 @@ export default function StarredTeams() {
     return () => {
       cancelled = true;
     };
-  }, [missingKey, attempt]);
+  }, [missingKey, refetch, attempt]);
 
   if (me === undefined) {
     return (

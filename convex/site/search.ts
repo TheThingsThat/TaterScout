@@ -4,10 +4,12 @@
 // events on top of these results.
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { requireSyncSecret } from "../sync/lib";
 
 export const search = query({
-  args: { season: v.number(), q: v.string() },
-  handler: async (ctx, { season, q }) => {
+  args: { secret: v.string(), season: v.number(), q: v.string() },
+  handler: async (ctx, { secret, season, q }) => {
+    requireSyncSecret(secret);
     const term = q.trim();
     if (term.length < 2) return { teams: [], events: [] };
 

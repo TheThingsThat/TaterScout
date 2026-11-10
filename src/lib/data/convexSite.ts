@@ -18,6 +18,10 @@ const DAY = 86_400;
 const ttl = (season: number, current: number) => (season === CURRENT_SEASON ? current : DAY);
 
 const url = () => process.env.NEXT_PUBLIC_CONVEX_URL!;
+// The site queries are gated on the sync secret so only this server can run
+// them. Unset, every read fails validation and degrades like an outage. It goes
+// in the query args only, never the cache key.
+const secret = () => process.env.SYNC_SECRET!;
 
 /** Thrown inside the cache to return a result without storing it. */
 class Uncached<T> {
@@ -51,7 +55,9 @@ async function cq<T>(key: (string | number)[], ttl: number, fn: () => Promise<T>
 }
 
 export const siteMeta = (season: number) =>
-  cq(["meta", season], ttl(season, 600), () => fetchQuery(api.site.rankings.meta, { season }, { url: url() }));
+  cq(["meta", season], ttl(season, 600), () =>
+    fetchQuery(api.site.rankings.meta, { secret: secret(), season }, { url: url() }),
+  );
 
 export const sitePage = (
   season: number,
@@ -60,36 +66,44 @@ export const sitePage = (
   cq(["page", season, q.sort, q.dir, q.region ?? "-", q.page, q.pageSize], ttl(season, 600), () =>
     fetchQuery(
       api.site.rankings.page,
-      { season, sort: q.sort as never, dir: q.dir, region: q.region, page: q.page, pageSize: q.pageSize },
+      {
+        secret: secret(),
+        season,
+        sort: q.sort as never,
+        dir: q.dir,
+        region: q.region,
+        page: q.page,
+        pageSize: q.pageSize,
+      },
       { url: url() },
     ),
   );
 
 export const siteTeamRow = (season: number, team: number) =>
   cq(["team", season, team], ttl(season, 300), () =>
-    fetchQuery(api.site.rankings.team, { season, team }, { url: url() }),
+    fetchQuery(api.site.rankings.team, { secret: secret(), season, team }, { url: url() }),
   );
 
 export const siteTeamRows = (season: number, teams: number[]) => {
   const sorted = [...teams].sort((a, b) => a - b);
   const key = createHash("sha1").update(sorted.join(",")).digest("hex").slice(0, 12);
   return cq(["teams", season, key], ttl(season, 300), () =>
-    fetchQuery(api.site.rankings.teams, { season, teams: sorted }, { url: url() }),
+    fetchQuery(api.site.rankings.teams, { secret: secret(), season, teams: sorted }, { url: url() }),
   );
 };
 
 export const siteTrajectory = (season: number, team: number) =>
   cq(["traj", season, team], ttl(season, 300), () =>
-    fetchQuery(api.site.trajectories.byTeam, { season, team }, { url: url() }),
+    fetchQuery(api.site.trajectories.byTeam, { secret: secret(), season, team }, { url: url() }),
   );
 
 /** `settled`: the event finished long enough ago that it won't change. */
 export const siteEventStats = (season: number, code: string, settled = false) =>
   cq(["estats", season, code], settled ? DAY : ttl(season, 300), () =>
-    fetchQuery(api.site.eventStats.byEvent, { season, code }, { url: url() }),
+    fetchQuery(api.site.eventStats.byEvent, { secret: secret(), season, code }, { url: url() }),
   );
 
 export const siteSearch = (season: number, q: string) =>
   cq(["search", season, q.toLowerCase()], ttl(season, 3600), () =>
-    fetchQuery(api.site.search.search, { season, q }, { url: url() }),
+    fetchQuery(api.site.search.search, { secret: secret(), season, q }, { url: url() }),
   );

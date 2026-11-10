@@ -23,6 +23,8 @@ export interface TeamDoc {
   rkOprNp: number | null;
   rkOprAuto: number | null;
   rkOprTele: number | null;
+  tipsAuto: number | null;
+  tipsTele: number | null;
 }
 export interface TrajectoryDoc {
   team: number;
@@ -102,6 +104,8 @@ function teamDoc(numStr: string, r: TeamRow): TeamDoc {
     rkOprNp: r.rkOprNp,
     rkOprAuto: r.rkOprAuto,
     rkOprTele: r.rkOprTele,
+    tipsAuto: r.tipsAuto ?? null,
+    tipsTele: r.tipsTele ?? null,
   };
 }
 
@@ -249,7 +253,8 @@ export function diffFingerprints(
 /** The fingerprints to persist after a push. A stats push never writes ranks
  *  (pushSiteDocs keepRanks), so every existing row keeps its previous `full`
  *  hash — otherwise the map would claim new ranks were written and the reconcile
- *  would miss them. Rows inserted new were written whole. */
+ *  would miss them. Rows inserted new were written unranked, so their `full`
+ *  hash is left blank for the reconcile to fill. */
 export function fingerprintsAfterPush(
   next: Fingerprints,
   prev: Fingerprints | null,
@@ -261,7 +266,7 @@ export function fingerprintsAfterPush(
   const teams = { ...next.teams };
   for (const k of Object.keys(teams)) {
     const p = prev.teams[k];
-    if (p) teams[k] = { stats: teams[k].stats, full: p.full };
+    teams[k] = { stats: teams[k].stats, full: p ? p.full : "" };
   }
   return { ...next, teams };
 }

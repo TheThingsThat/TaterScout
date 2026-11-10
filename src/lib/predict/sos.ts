@@ -27,7 +27,7 @@ export interface SosInput {
 
 export interface TeamSos {
   number: number;
-  deltaRp: number; // actual expected RP − random-schedule average (negative = harder)
+  deltaRp: number; // actual expected RP per match − random-schedule average (negative = harder)
   rpPctile: number; // 0..1, higher = harder
   deltaRank: number; // actual expected seed − random average (positive = harder)
   rankPctile: number; // higher = harder
@@ -43,7 +43,8 @@ export interface SosResult {
   iters: number;
 }
 
-/** Analytic expected ranking points per team for one schedule. */
+/** Analytic expected ranking points per team for one schedule, averaged per match
+ *  as FTC ranks: as a total, a surrogate's extra match would read as an easy draw. */
 function expectedRpPerTeam(
   schedule: SchedMatchIdx[],
   epa: Float64Array,
@@ -51,6 +52,7 @@ function expectedRpPerTeam(
   teamCount: number,
 ): Float64Array {
   const out = new Float64Array(teamCount);
+  const cnt = new Int32Array(teamCount);
   const ms = model.marginSd;
   const winRp = model.rp.winRp;
   for (const [r0, r1, b0, b1] of schedule) {
@@ -64,7 +66,12 @@ function expectedRpPerTeam(
     out[r1] += redRp;
     out[b0] += blueRp;
     out[b1] += blueRp;
+    cnt[r0]++;
+    cnt[r1]++;
+    cnt[b0]++;
+    cnt[b1]++;
   }
+  for (let i = 0; i < teamCount; i++) if (cnt[i]) out[i] /= cnt[i];
   return out;
 }
 

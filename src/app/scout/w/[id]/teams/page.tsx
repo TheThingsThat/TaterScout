@@ -1,9 +1,12 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery } from "convex/react";
+import Link from "next/link";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import type { Id } from "@convex/_generated/dataModel";
+import type { Doc, Id } from "@convex/_generated/dataModel";
+import { toast } from "sonner";
+import { errorMessage } from "@/lib/scoutError";
 
 const fmt = (x: number | null | undefined) => (x == null ? "—" : x.toFixed(1));
 const PIT_CLASS: Record<string, string> = { full: "text-teal", minor: "text-gold", major: "text-accent" };
@@ -12,13 +15,26 @@ const PIT_LABEL: Record<string, string> = { full: "OK", minor: "minor", major: "
 function DetailModal({
   workspaceId,
   teamNumber,
+  me,
   onClose,
 }: {
   workspaceId: Id<"workspaces">;
   teamNumber: number;
+  me: Doc<"members">;
   onClose: () => void;
 }) {
   const detail = useQuery(api.teams.detail, { workspaceId, teamNumber });
+  const deleteReport = useMutation(api.match.deleteReport);
+
+  async function onDelete(reportId: Id<"matchReports">, matchNumber: number) {
+    if (!confirm(`Delete the Q${matchNumber} report for ${teamNumber}? It can then be scouted again.`)) return;
+    try {
+      await deleteReport({ reportId });
+      toast.success(`Deleted Q${matchNumber} report`);
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not delete the report"));
+    }
+  }
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
@@ -152,9 +168,19 @@ function DetailModal({
                   {detail.reports.map((r) => (
                     <div key={r._id} className="flex items-center justify-between rounded-lg bg-surface px-3 py-2 text-[13px]">
                       <span className="font-mono text-muted">Q{r.matchNumber}</span>
-                      <span className="text-[12px] text-muted">
+                      <span className="ml-auto text-[12px] text-muted">
                         auto {r.autoArtifacts} · tele {r.teleopArtifacts} · {r.endgame}
                       </span>
+                      {/* Same rule the server enforces: the author or an admin. */}
+                      {(r.memberId === me._id || me.role === "admin") && (
+                        <button
+                          onClick={() => onDelete(r._id, r.matchNumber)}
+                          title="Delete report"
+                          className="ml-3 text-[16px] leading-none text-[#4a4f57] hover:text-accent"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -168,10 +194,18 @@ function DetailModal({
 }
 
 function Teams({ id }: { id: Id<"workspaces"> }) {
-  const teams = useQuery(api.teams.list, { workspaceId: id });
+  const data = useQuery(api.workspaces.get, { workspaceId: id });
+  // teams.list throws for a non-member; wait until get() confirms access.
+  const teams = useQuery(api.teams.list, data ? { workspaceId: id } : "skip");
   const [selected, setSelected] = useState<number | null>(null);
 
-  if (teams === undefined) return <div className="text-sm text-muted">Loading…</div>;
+  if (data === null)
+    return (
+      <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
+        No access. <Link href="/scout" className="text-accent no-underline">Back</Link>
+      </div>
+    );
+  if (teams === undefined || data === undefined) return <div className="text-sm text-muted">Loading…</div>;
   if (teams.length === 0)
     return (
       <div className="rounded-2xl border border-[#1a1a1a] bg-surface p-6 text-center text-sm text-muted">
@@ -210,7 +244,7 @@ function Teams({ id }: { id: Id<"workspaces"> }) {
       </div>
 
       {selected != null && (
-        <DetailModal workspaceId={id} teamNumber={selected} onClose={() => setSelected(null)} />
+        <DetailModal workspaceId={id} teamNumber={selected} me={data.member} onClose={() => setSelected(null)} />
       )}
     </div>
   );

@@ -11,7 +11,11 @@ export default function Heartbeat() {
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      fetch("/api/status", { cache: "no-store" }).catch(() => {});
+      // A live page's LiveRefresh renders already schedule the sync.
+      if (Number(document.documentElement.dataset.live ?? 0) > 0) return;
+      // Default cache mode: the CDN caches the response for a minute, and no-store
+      // would send no-cache headers that make it revalidate.
+      fetch("/api/status").catch(() => {});
     }, 60_000);
     return () => clearInterval(id);
   }, []);

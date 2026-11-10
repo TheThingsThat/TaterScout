@@ -10,5 +10,8 @@ export const maxDuration = 60; // headroom for the after()-scheduled sync
 
 export async function GET() {
   scheduleAutoRefresh(SEASON); // no-op unless the store is due (shared cadence)
-  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "public, max-age=5" } });
+  // s-maxage only: Vercel's CDN serves every tab in a region from one cached
+  // response, so about one ping a minute per region reaches this function, which
+  // is still enough to start any due sync. No max-age, so browsers don't cache it.
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "public, s-maxage=60" } });
 }

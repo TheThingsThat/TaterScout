@@ -437,8 +437,13 @@ function PitAssignments({ id }: { id: Id<"workspaces"> }) {
 // ---- Page -------------------------------------------------------------------
 function Members({ id }: { id: Id<"workspaces"> }) {
   const data = useQuery(api.workspaces.get, { workspaceId: id });
-  const teams = useQuery(api.teams.roster, { workspaceId: id });
-  const board = useQuery(api.assignments.matchBoard, { workspaceId: id });
+  // These throw "Admins only." for anyone else (a scout, or an admin who just
+  // demoted themselves); wait until get() confirms the role. members.list has
+  // the same args as MembersTable's, so it shares that subscription rather
+  // than adding matchBoard's report reads for the whole page.
+  const asAdmin = data?.member.role === "admin" ? { workspaceId: id } : "skip";
+  const teams = useQuery(api.teams.roster, asAdmin);
+  const roster = useQuery(api.members.list, asAdmin);
   const setFree = useMutation(api.workspaces.setFreeScoutMode);
   const [sub, setSub] = useState<"match" | "pit">("match");
 
@@ -451,7 +456,7 @@ function Members({ id }: { id: Id<"workspaces"> }) {
     );
 
   const free = !!data.workspace.freeScoutMode;
-  const members = board?.members ?? [];
+  const members = (roster ?? []).map((m) => ({ _id: m._id, name: m.name, role: m.role }));
   const teamList = (teams ?? []).map((t) => ({ teamNumber: t.teamNumber, name: t.name }));
 
   return (

@@ -55,10 +55,13 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
   const e = t.next;
   if (!e) return <span className="text-[13px] text-[#6b6f78]">No upcoming events</span>;
   const live = isLive(e, now);
+  // Over but not yet refetched (or the refetch failed): no "Starts in 1m" countdown.
+  const ended = e.endMs !== null && now >= e.endMs;
   const place = [e.city, e.state].filter(Boolean).join(", ");
   return (
     <div className="min-w-0">
       <Link
+        prefetch={false}
         href={`/events/${season}/${e.code}`}
         className="block truncate text-[14px] text-[#e7eaf0] no-underline hover:text-foreground hover:underline"
         title={e.name}
@@ -75,7 +78,7 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
           <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Live now
           </span>
-        ) : e.startMs !== null ? (
+        ) : !ended && e.startMs !== null ? (
           <span className="rounded-full bg-[#141414] px-2 py-0.5 font-mono text-[11px] text-[#cfd3da]">
             Starts {countdown(e.startMs, now)}
           </span>
@@ -85,9 +88,9 @@ function NextEvent({ t, now, season }: { t: TeamSummary; now: number; season: nu
   );
 }
 
-function Stat({ label, value, rank }: { label: string; value: string; rank?: number | null }) {
+function Stat({ label, value, rank, wide }: { label: string; value: string; rank?: number | null; wide?: boolean }) {
   return (
-    <div className="w-[76px] text-left md:text-right">
+    <div className={`${wide ? "w-[96px]" : "w-[76px]"} text-left md:text-right`}>
       <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6f78]">{label}</div>
       <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[#f7f8fa]">{value}</div>
       {rank != null && <div className="text-[11px] tabular-nums text-[#6b6f78]">#{rank.toLocaleString()}</div>}
@@ -131,7 +134,7 @@ export default function TeamTable({
         >
           <div className="flex min-w-0 items-center gap-3">
             <StarButton team={t.number} compact />
-            <Link href={`/teams/${t.number}`} className="min-w-0 no-underline">
+            <Link prefetch={false} href={`/teams/${t.number}`} className="min-w-0 no-underline">
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-[14px] font-bold text-accent">{t.number}</span>
                 <span className="truncate text-[15px] font-medium text-[#f7f8fa] hover:underline">{t.name}</span>
@@ -140,10 +143,16 @@ export default function TeamTable({
             </Link>
           </div>
           <NextEvent t={t} now={now} season={season ?? 0} />
-          <div className="flex justify-start gap-3 md:justify-end">
+          <div className="flex flex-wrap justify-start gap-x-3 gap-y-2 md:flex-nowrap md:justify-end">
             <Stat label="World rank" value={t.rkEpa != null ? `#${t.rkEpa.toLocaleString()}` : "—"} />
             <Stat label="EPA" value={fmt(t.epa)} />
             <Stat label="OPR" value={fmt(t.oprNp)} rank={t.rkOprNp} />
+            {/* Always rendered so every row's columns line up, rated or not. */}
+            <Stat
+              label="Tips A / T"
+              value={t.tipsAuto != null || t.tipsTele != null ? `${fmt(t.tipsAuto, 2)} / ${fmt(t.tipsTele, 2)}` : "—"}
+              wide
+            />
           </div>
         </div>
       ))}

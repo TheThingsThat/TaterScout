@@ -1,5 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
+import { createHash } from "node:crypto";
 import { getEvent } from "@/lib/ftc/queries";
 import { seasonFull, isKnownSeason, isValidEventCode, rankedByRp } from "@/lib/season";
 import { eventTypeLabel } from "@/lib/ftc/labels";
@@ -69,12 +71,18 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   const ev = await getEvent(season, code);
   if (!ev) notFound();
+  const sched = (await searchParams).sched;
+  // One URL per event: /events/2025/usnyexcmp would otherwise be its own page.
+  // URLs use the upper-case form (the proxy 308s other casings there); a few FIRST
+  // codes are mixed-case, so compare upper-case or the two redirects would loop.
+  if (code !== ev.code.toUpperCase())
+    redirect(`/events/${season}/${ev.code.toUpperCase()}${sched ? `?sched=${encodeURIComponent(sched)}` : ""}`);
 
   // Time-aware ratings for THIS event: pre-event EPA (seeds the simulation,
   // no lookahead) and post-event EPA/OPR (shown in the rankings table).
   const [epaMap, evStats] = await Promise.all([
     getRankingMap(season, ev.teams.map((t) => t.teamNumber)),
-    getEventStats(season, code, ev.end),
+    getEventStats(season, ev.code, ev.end),
   ]);
 
   // While an event is live, solve per-event OPR from the scores in THIS request
@@ -147,24 +155,11 @@ export default async function EventPage({ params, searchParams }: Props) {
       ? 2
       : undefined;
 
-  const schedParam = (await searchParams).sched;
   const mode: "real" | "sim" =
-    schedParam === "sim" ? "sim" : schedParam === "real" ? "real" : realAvailable ? "real" : "sim";
+    sched === "sim" ? "sim" : sched === "real" ? "real" : realAvailable ? "real" : "sim";
   const rated = simTeams.some((t) => t.epa > 0);
   // Seed and playoff odds assume RP rankings; 2020-21 ranked by total score.
   const canPredict = simTeams.length >= 6 && rated && rankedByRp(season);
-  const simResult = canPredict
-    ? simulateEvent({
-        teams: simTeams,
-        model,
-        matchesPerTeam,
-        realSchedule: mode === "real" && realAvailable ? realSchedule : undefined,
-        allianceCount,
-        allianceSize,
-        iters: teamNums.length > 80 ? 1200 : 3000,
-        seed: 0x51ed51ed,
-      })
-    : null;
 
   // Per-match win probabilities for unplayed matches.
   const winProbs = new Map<string, number>();
@@ -202,12 +197,44 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   // --- Strength of schedule (Statbotics-style; needs a released real schedule) ---
   const canSos = realAvailable && teamNums.length >= 6 && rated && rankedByRp(season);
-  const sosPre = canSos
-    ? computeSos({ teams: teamNums, epaOf: (i) => preEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
-    : null;
-  const sosPost = canSos
-    ? computeSos({ teams: teamNums, epaOf: (i) => postEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
-    : null;
+
+  // The simulation and SoS are seeded and read no match results, so their output is
+  // fixed by these inputs. Cache it under a hash of all of them: every viewer and
+  // LiveRefresh poll then reuses one result, and any input change is a new key.
+  const simSchedule = mode === "real" && realAvailable ? realSchedule : undefined;
+  const postEpa = canSos ? teamNums.map(postEpaOf) : null;
+  const predictKey = createHash("sha1")
+    .update(
+      JSON.stringify({
+        season, simTeams, model, matchesPerTeam, simSchedule, allianceCount, allianceSize,
+        canPredict, canSos, sosSchedule: canSos ? realSchedule : null, postEpa,
+      }),
+    )
+    .digest("hex");
+  const { simResult, sosPre, sosPost } = await unstable_cache(
+    async () => ({
+      simResult: canPredict
+        ? simulateEvent({
+            teams: simTeams,
+            model,
+            matchesPerTeam,
+            realSchedule: simSchedule,
+            allianceCount,
+            allianceSize,
+            iters: teamNums.length > 80 ? 1200 : 3000,
+            seed: 0x51ed51ed,
+          })
+        : null,
+      sosPre: canSos
+        ? computeSos({ teams: teamNums, epaOf: (i) => preEpaOf(teamNums[i]), actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
+        : null,
+      sosPost: canSos
+        ? computeSos({ teams: teamNums, epaOf: (i) => postEpa![i], actualSchedule: realSchedule, model, matchesPerTeam, seed: 0x50505050 })
+        : null,
+    }),
+    ["event-predict", predictKey],
+    { revalidate: 86400 },
+  )();
 
   // --- Playoff alliance numbers (from FIRST) for the match list ---
   const allianceOf = new Map<number, number>();

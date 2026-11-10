@@ -45,6 +45,7 @@ export default function TeamEventCard({
   return (
     <div className="overflow-hidden rounded-2xl border border-[#1a1a1a] bg-surface">
       <Link
+        prefetch={false}
         href={`/events/${season}/${event.code}`}
         className="flex items-center justify-between gap-4 px-5 py-[15px] no-underline transition-colors hover:bg-[#101010]"
       >

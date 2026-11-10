@@ -1,7 +1,7 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
 
@@ -11,12 +11,15 @@ export type Me = NonNullable<FunctionReturnType<typeof api.stars.mine>>;
  * The signed-in visitor (or null), shared by the header, star buttons and the
  * homepage: identical queries collapse into one subscription per tab. Signed-out
  * visitors never subscribe, so they cost Convex nothing.
- * `undefined` while sign-in state or the query is still loading.
+ * `undefined` while sign-in state or the query is still loading. With no auth
+ * token from the server render it's null at once, so the server HTML already
+ * shows the signed-out UI and nothing shifts after hydration.
  */
 export function useMe(): Me | null | undefined {
   const { isLoading, isAuthenticated } = useConvexAuth();
+  const hasToken = useAuthToken() !== null;
   const me = useQuery(api.stars.mine, isAuthenticated ? {} : "skip");
-  if (isLoading) return undefined;
+  if (isLoading) return hasToken ? undefined : null;
   if (!isAuthenticated) return null;
   return me;
 }

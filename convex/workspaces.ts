@@ -2,8 +2,8 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { fail, requireAdmin, checkLen } from "./lib";
-import { isDemoUser, MAX_DEMO_WORKSPACES } from "./demo";
+import { fail, requireAdmin, checkLen, adminWorkspaceCount } from "./lib";
+import { isDemoUser, MAX_DEMO_WORKSPACES, demoSessionFor, DEMO_TTL_MS } from "./demo";
 import type { Id } from "./_generated/dataModel";
 
 // Unambiguous join code (no 0/O/1/I). A join code is a bearer credential — it
@@ -43,11 +43,8 @@ export const create = mutation({
     // Demo sessions get a much tighter cap than real accounts.
     const demo = await isDemoUser(ctx, userId);
     const cap = demo ? MAX_DEMO_WORKSPACES : MAX_WORKSPACES_PER_USER;
-    const owned = await ctx.db
-      .query("workspaces")
-      .withIndex("by_adminUser", (q) => q.eq("adminUserId", userId))
-      .take(cap + 1);
-    if (owned.length >= cap) {
+    const owned = await adminWorkspaceCount(ctx, userId, cap);
+    if (owned >= cap) {
       // ConvexError, not Error: plain Error messages are redacted to a generic
       // "Server Error" in production, and this one is normal-path UX the user
       // needs to actually read.
@@ -56,6 +53,12 @@ export const create = mutation({
           ? `Demo mode is limited to ${cap} workspaces. Sign up for a free account to create more.`
           : `You've reached the limit of ${MAX_WORKSPACES_PER_USER} workspaces.`,
       );
+    }
+    // The reaper finds demo data through the session row. If another tab's
+    // wipe already deleted it, this workspace would otherwise never be swept.
+    if (demo && !(await demoSessionFor(ctx, userId))) {
+      const now = Date.now();
+      await ctx.db.insert("demoSessions", { userId, createdAt: now, expiresAt: now + DEMO_TTL_MS });
     }
     // A unique join code (retry a few times on the rare collision).
     let joinCode = makeJoinCode();
@@ -123,6 +126,22 @@ async function clearScoutingData(ctx: MutationCtx, workspaceId: Id<"workspaces">
     await ctx.db.delete(r._id);
   }
 }
+
+/** Delete a workspace and everything in it — admin only. Without this the
+ *  per-user cap eventually locks out a team that makes one per event. */
+export const remove = mutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    await requireAdmin(ctx, workspaceId);
+    await clearScoutingData(ctx, workspaceId);
+    const members = await ctx.db
+      .query("members")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    for (const m of members) await ctx.db.delete(m._id);
+    await ctx.db.delete(workspaceId);
+  },
+});
 
 /** Set (or change) the workspace's event — admin only. Changing the event code
  *  wipes the workspace's scouting data (it belonged to the old event). */

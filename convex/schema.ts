@@ -236,6 +236,10 @@ export default defineSchema({
     rkOprNp: v.union(v.number(), v.null()),
     rkOprAuto: v.union(v.number(), v.null()),
     rkOprTele: v.union(v.number(), v.null()),
+    // Expected hive tips a robot adds per match (BIOBUZZ count EPA). Never sorted
+    // on, so no index; absent on seasons and rows without counts.
+    tipsAuto: v.optional(v.union(v.number(), v.null())),
+    tipsTele: v.optional(v.union(v.number(), v.null())),
   })
     .index("by_season_team", ["season", "team"])
     .index("by_season_numberStr", ["season", "numberStr"])

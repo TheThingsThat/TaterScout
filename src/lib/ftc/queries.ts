@@ -7,7 +7,7 @@ import { levelOf, normalizeEventType } from "./labels";
 import { isAllianceMatch, isScored, teamsOnField, venueTimeIso, venueTimeMs, venueToday } from "./match";
 import { buildBreakdown, type ScoreRow } from "./breakdown";
 import { siteMeta, siteSearch } from "../data/convexSite";
-import { CURRENT_SEASON, isValidEventCode } from "../season";
+import { CURRENT_SEASON, isKnownSeason, isValidEventCode } from "../season";
 import type {
   Team,
   TeamSearchResult,
@@ -113,6 +113,13 @@ const SETTLED_REVALIDATE = 86400;
 /** A finished season's FIRST data no longer changes: cache it for a day. */
 const ttl = (season: number) => (season < CURRENT_SEASON ? SETTLED_REVALIDATE : REVALIDATE);
 const SETTLED_AFTER_MS = 14 * 86400000; // past the longest sync sweep window
+// The season's event list (~1 MB) changes a few times a week, not each minute. A new
+// event, or an edit to one's name, dates or timezone, can take an hour to show.
+const LIST_REVALIDATE = 3600;
+const listTtl = (season: number) => (season < CURRENT_SEASON ? SETTLED_REVALIDATE : LIST_REVALIDATE);
+/** Every caller uses this, so they all share one cache entry for the list. */
+const getSeasonEventsRaw = (season: number) =>
+  firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: listTtl(season) });
 
 const now = () => Date.now();
 const parse = (s: string | null | undefined, tz: string | null) => venueTimeMs(s, tz) ?? NaN;
@@ -156,14 +163,28 @@ function toTeamEvent(e: FEvent, season: number): TeamEventLite {
   };
 }
 
+/**
+ * A team's FIRST record for the season, or null if FIRST has none. FIRST answers an
+ * unknown team with 400, which the fetch cache never stores, so this caches the
+ * answer itself, not-founds included: an invented number costs one FIRST call per
+ * window rather than per request. Transient failures throw, so they're never cached.
+ */
+const teamRowCached = unstable_cache(
+  async (number: number, season: number): Promise<FTeam | null> =>
+    (await firstGet<{ teams: FTeam[] }>(`${season}/teams?teamNumber=${number}`, { revalidate: 3600 }))
+      ?.teams?.[0] ?? null,
+  ["team-row"],
+  { revalidate: 900 },
+);
+
 export async function getTeam(number: number, season: number): Promise<Team | null> {
-  const [teamR, eventsR, awardsR] = await Promise.all([
-    firstGet<{ teams: FTeam[] }>(`${season}/teams?teamNumber=${number}`, { revalidate: 3600 }),
+  // Existence first, so an unknown number never reaches the events/awards calls.
+  const t = await teamRowCached(number, season);
+  if (!t) return null;
+  const [eventsR, awardsR] = await Promise.all([
     firstGet<{ events: FEvent[] }>(`${season}/events?teamNumber=${number}`, { revalidate: ttl(season) }),
     firstGet<{ awards: FAward[] }>(`${season}/awards/${number}`, { revalidate: ttl(season) }),
   ]);
-  const t = teamR?.teams?.[0];
-  if (!t) return null;
 
   const events = (eventsR?.events ?? []).map((e) => toTeamEvent(e, season));
   const nameByCode = new Map(events.map((e) => [e.eventCode, e.event.name]));
@@ -269,9 +290,10 @@ async function fetchEventTeamNames(season: number, code: string): Promise<Map<nu
 }
 
 /**
- * Is this a real event code for the season? Answered from FIRST's season list,
- * which is ONE cached fetch shared by every request (search uses it too), so a
- * legitimate page pays nothing extra.
+ * This code's row in FIRST's season list: null = not a real code, undefined = the
+ * list is unavailable. The list is ONE cached fetch shared by every request
+ * (search uses it too), so a legitimate page pays nothing extra, and the row
+ * itself replaces a separate per-event detail fetch.
  *
  * Without this gate, `/events/2025/<anything>` fans out to ~9 credentialed
  * FIRST calls before discovering the event doesn't exist — and since the data
@@ -280,14 +302,14 @@ async function fetchEventTeamNames(season: number, code: string): Promise<Map<nu
  * request rate. Fails OPEN: if the list is unavailable we serve the page
  * rather than 404 real events over a transient upstream hiccup.
  */
-async function isRealEventCode(season: number, code: string): Promise<boolean> {
+async function findListedEvent(season: number, code: string): Promise<FEvent | null | undefined> {
   try {
-    const list = await getSeasonEventList(season);
-    if (list.length === 0) return true;
+    const list = (await getSeasonEventsRaw(season))?.events ?? [];
+    if (list.length === 0) return undefined;
     const want = code.toUpperCase();
-    return list.some((e) => e.code.toUpperCase() === want);
+    return list.find((e) => e.code.toUpperCase() === want) ?? null;
   } catch {
-    return true;
+    return undefined;
   }
 }
 
@@ -383,17 +405,31 @@ function buildMatches(
   return matches;
 }
 
-export async function getEvent(season: number, code: string): Promise<EventDetail | null> {
-  if (!(await isRealEventCode(season, code))) return null;
+export async function getEvent(season: number, rawCode: string): Promise<EventDetail | null> {
+  // Clamp here, not only in the page: generateMetadata passes raw URL params, and an
+  // unknown season has no list to gate on (it would fail open into ~9 FIRST calls).
+  const want = rawCode.toUpperCase();
+  if (!Number.isInteger(season) || !isKnownSeason(season) || !isValidEventCode(want)) return null;
+  const listed = await findListedEvent(season, want);
+  if (listed === null) return null;
+  // FIRST's own spelling, so every casing of a URL shares one set of cache entries.
+  const code = listed?.code ?? want;
+  // An event that ended long ago won't change: cache it like the team page does.
+  const rv = listed
+    ? teamPageRevalidate(season, listed.dateEnd ?? listed.dateStart ?? "", listed.timezone ?? "UTC")
+    : ttl(season);
   const [detailR, qualHybR, poHybR, qs, ps, rankR, allianceR, awardR, names] = await Promise.all([
-    firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: ttl(season) }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: ttl(season) }),
-    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: ttl(season) }),
-    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: ttl(season) })),
-    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: ttl(season) })),
-    optional(getEventRankings(season, code, ttl(season))),
-    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: ttl(season) }),
-    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: ttl(season) }),
+    // The listed row is the same object; fetch it alone only when the list was unavailable.
+    listed
+      ? Promise.resolve({ events: [listed] })
+      : firstGet<{ events: FEvent[] }>(`${season}/events?eventCode=${code}`, { revalidate: ttl(season) }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/qual/hybrid`, { revalidate: rv }),
+    firstGet<{ schedule: FHybridMatch[] }>(`${season}/schedule/${code}/playoff/hybrid`, { revalidate: rv }),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/qual`, { revalidate: rv })),
+    optional(firstGet<{ matchScores: FMatchScore[] }>(`${season}/scores/${code}/playoff`, { revalidate: rv })),
+    optional(getEventRankings(season, code, rv)),
+    firstGet<{ alliances: FAlliance[] }>(`${season}/alliances/${code}`, { revalidate: rv }),
+    firstGet<{ awards: FAward[] }>(`${season}/awards/${code}`, { revalidate: rv }),
     fetchEventTeamNames(season, code),
   ]);
   const d = detailR?.events?.[0];
@@ -579,7 +615,7 @@ function scoreMatch(hayName: string, needle: string, extra?: string): number {
  *  precomputed store — which only holds events that already have matches — this
  *  includes UPCOMING events, so they stay searchable/importable before start. */
 async function getSeasonEventList(season: number): Promise<EventSearchResult[]> {
-  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: ttl(season) });
+  const r = await getSeasonEventsRaw(season);
   return (r?.events ?? []).map((e) => ({
     code: e.code,
     season,
@@ -592,7 +628,7 @@ async function getSeasonEventList(season: number): Promise<EventSearchResult[]> 
 
 /** Every event in a season for the events index, including upcoming ones. */
 export async function getEventIndex(season: number): Promise<EventIndexRow[]> {
-  const r = await firstGet<{ events: FEvent[] }>(`${season}/events`, { revalidate: ttl(season) });
+  const r = await getSeasonEventsRaw(season);
   const t = now();
   // Old seasons have some junk codes ("63693260770.2649"), 209 of 2019's 1,130, that the
   // event page refuses. Same check as that page, which upper-cases first.

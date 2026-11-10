@@ -244,3 +244,78 @@ export function computeEpa(
 
   return { config: cfg, teams };
 }
+
+// --- Count EPA: the same model over game-piece COUNTS instead of points ------
+// A team's rating per component is the number of that piece it's expected to
+// add to its alliance each match (e.g. BIOBUZZ hive tips in auto and TeleOp).
+// FIRST reports counts per ALLIANCE only, so this splits them between robots
+// exactly the way point EPA does: same chase rate, share and playoff weight.
+
+export interface CountMatch {
+  time: number;
+  redTeams: number[];
+  blueTeams: number[];
+  /** Per-alliance counts, one per component; empty = unknown (match skipped). */
+  red: number[];
+  blue: number[];
+  playoff?: boolean;
+  rated?: boolean;
+}
+
+export interface TeamCountEpa {
+  v: number[]; // expected count per match, per component
+  n: number; // qual matches with known counts
+}
+
+/** Ratings per team, or empty when no match carries counts. */
+export function computeCountEpa(
+  matches: CountMatch[],
+  components: number,
+  overrides: Partial<EpaConfig> = {},
+): Map<number, TeamCountEpa> {
+  const cfg: EpaConfig = { ...DEFAULT_CONFIG, ...overrides };
+  const known = matches
+    .filter((m) => m.rated !== false && m.red.length === components && m.blue.length === components)
+    .sort((a, b) => a.time - b.time);
+  const teams = new Map<number, TeamCountEpa>();
+  if (known.length === 0) return teams;
+
+  // Seed new teams at half the early-season mean alliance count (2 robots per
+  // alliance), as point EPA does; the whole season if the early window is thin.
+  const mean = (ms: CountMatch[]) => {
+    const sum = new Array<number>(components).fill(0);
+    for (const m of ms) for (let c = 0; c < components; c++) sum[c] += m.red[c] + m.blue[c];
+    return sum.map((s) => s / (2 * ms.length));
+  };
+  const cutoff = known[0].time + cfg.baselineWindowDays * 24 * 3600 * 1000;
+  const early = known.filter((m) => m.time <= cutoff);
+  const init = mean(early.length * 2 >= 100 ? early : known).map((x) => x / 2);
+
+  const get = (t: number): TeamCountEpa => {
+    let e = teams.get(t);
+    if (!e) {
+      e = { v: [...init], n: 0 };
+      teams.set(t, e);
+    }
+    return e;
+  };
+
+  for (const m of known) {
+    const red = m.redTeams.map(get);
+    const blue = m.blueTeams.map(get);
+    if (red.length === 0 || blue.length === 0) continue;
+    const weight = m.playoff ? cfg.elimWeight : 1;
+    const apply = (members: TeamCountEpa[], actual: number[]) => {
+      const surprise = actual.map((a, c) => a - members.reduce((s, e) => s + e.v[c], 0));
+      const share = weight / members.length;
+      for (const e of members) {
+        const chase = kFactor(e.n, cfg);
+        for (let c = 0; c < components; c++) e.v[c] += chase * share * surprise[c];
+        if (!m.playoff) e.n += 1;
+      }
+    };
+    apply(red, m.red);
+    apply(blue, m.blue);
+  }
+  return teams;
+}

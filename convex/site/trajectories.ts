@@ -3,10 +3,12 @@
 // pattern is structurally impossible (the Statbotics lesson).
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { requireSyncSecret } from "../sync/lib";
 
 export const byTeam = query({
-  args: { season: v.number(), team: v.number() },
-  handler: async (ctx, { season, team }) => {
+  args: { secret: v.string(), season: v.number(), team: v.number() },
+  handler: async (ctx, { secret, season, team }) => {
+    requireSyncSecret(secret);
     return await ctx.db
       .query("seasonTrajectories")
       .withIndex("by_season_team", (q) => q.eq("season", season).eq("team", team))

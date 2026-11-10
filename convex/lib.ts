@@ -142,3 +142,18 @@ export function checkCount(value: number, max: number, label: string): void {
   }
   if (value > max) fail(`${label} is unrealistically high (max ${max}).`);
 }
+
+/** How many workspaces the user is an admin of, counted up to `cap`. Counted
+ *  by admin memberships rather than `workspaces.adminUserId`, so a creator a
+ *  co-admin removed stops paying for a workspace they can no longer see. */
+export async function adminWorkspaceCount(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  cap: number,
+): Promise<number> {
+  let n = 0;
+  for await (const m of ctx.db.query("members").withIndex("by_user", (q) => q.eq("userId", userId))) {
+    if (m.role === "admin" && ++n >= cap) break;
+  }
+  return n;
+}

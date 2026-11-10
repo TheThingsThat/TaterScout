@@ -195,11 +195,12 @@ export const workerStateUrl = query({
   },
 });
 
-/** Freshness tokens for a set of FIRST API paths (worker-only usefulness, but
- *  the values are harmless Last-Modified strings). ≤200 paths per call. */
+/** Freshness tokens for a set of FIRST API paths. The values are harmless
+ *  Last-Modified strings, but 200 reads a call is worth gating. ≤200 paths. */
 export const freshness = query({
-  args: { season: v.number(), paths: v.array(v.string()) },
-  handler: async (ctx, { season, paths }) => {
+  args: { secret: v.string(), season: v.number(), paths: v.array(v.string()) },
+  handler: async (ctx, { secret, season, paths }) => {
+    requireSyncSecret(secret);
     if (paths.length > 200) throw new Error("Too many paths (max 200).");
     const out: Record<string, string> = {};
     for (const path of paths) {

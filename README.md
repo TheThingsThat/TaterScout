@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TaterScout
 
-## Getting Started
+A FIRST Tech Challenge scouting dashboard: team EPA and OPR, win predictions,
+strength of schedule, event rankings and match results, plus a scouting app for
+teams to collect their own match and pit reports.
 
-First, run the development server:
+Next.js (App Router) on Vercel, with [Convex](https://convex.dev) as the only
+backend: season stats, scouting data, sign-in and the sync worker's state.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Local development
+
+```sh
+npm install
+npx convex dev   # dev Convex deployment; writes NEXT_PUBLIC_CONVEX_URL to .env.local
+npm run dev      # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Live event and team pages also need `FIRST_API_USER` and `FIRST_API_TOKEN` in
+`.env.local`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Every season-stats read (rankings, team, event and search pages) and the sync
+itself need a shared `SYNC_SECRET`, set on the dev Convex deployment and in
+`.env.local`; without it those pages render as if Convex were down. Then seed:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```sh
+s="$(openssl rand -hex 32)"
+npx convex env set SYNC_SECRET "$s"     # dev deployment
+echo "SYNC_SECRET=$s" >> .env.local
+npx tsx scripts/build-epa.ts && npx tsx scripts/seed-convex.ts --full   # current season
+```
 
-## Learn More
+## Production
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [VERCEL_SETUP.md](VERCEL_SETUP.md) for provisioning, environment variables,
+seeding every season, and how data stays fresh.
