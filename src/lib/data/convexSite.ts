@@ -28,7 +28,7 @@ const secret = () => process.env.SYNC_SECRET!;
  * bump it after reseeding one so stale entries, cached "not found"s included, are
  * retired at once instead of after the 1-day TTL.
  */
-const PAST = "s2";
+const PAST = "s3";
 
 async function cq<T>(key: (string | number)[], ttl: number, fn: () => Promise<T>) {
   const season = typeof key[1] === "number" ? key[1] : CURRENT_SEASON;
