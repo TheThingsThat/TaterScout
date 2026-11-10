@@ -293,8 +293,11 @@ export default defineSchema({
       }),
     ),
     // Rows of [dtMin, localEventIdx, playoff, epaAuto, epaTele, oprAuto|null, oprTele|null, noShow?, num?, series?],
-    // as a JSON string: about half the size of the array form rows once used.
-    pointsJson: v.string(),
+    // as a JSON string: about half the size of the array form. Every write uses it;
+    // `points` (the array form) survives only on rows no reseed has touched, e.g.
+    // teams that dropped out of a season's data, which a seed never deletes.
+    pointsJson: v.optional(v.string()),
+    points: v.optional(v.array(v.array(v.union(v.number(), v.null())))),
   }).index("by_season_team", ["season", "team"]),
 
   // One doc per (season, event): team -> [preTot, preAuto, postTot, postAuto, oprNp, oprAuto].
